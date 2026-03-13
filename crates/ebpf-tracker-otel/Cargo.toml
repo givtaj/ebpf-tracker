@@ -1,0 +1,17 @@
+[package]
+name = "ebpf-tracker-otel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "OTLP and Jaeger-oriented consumer scaffold for ebpf-tracker JSONL streams"
+publish = false
+
+[dependencies]
+ebpf-tracker-events = { path = "../ebpf-tracker-events" }
+serde_json = { workspace = true }
+
+[[bin]]
+name = "ebpf-tracker-otel"
+path = "src/main.rs"

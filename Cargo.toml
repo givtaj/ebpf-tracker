@@ -11,7 +11,13 @@ keywords = ["cargo", "ebpf", "bpftrace", "observability", "rust"]
 categories = ["command-line-utilities", "development-tools"]
 
 [workspace]
-members = [".", "crates/ebpf-tracker-events", "examples/session-io-demo"]
+members = [
+    ".",
+    "crates/ebpf-tracker-events",
+    "crates/ebpf-tracker-otel",
+    "crates/ebpf-tracker-perf",
+    "examples/session-io-demo",
+]
 resolver = "2"
 
 [workspace.package]

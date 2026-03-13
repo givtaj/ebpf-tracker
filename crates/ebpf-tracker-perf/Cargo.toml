@@ -1,0 +1,12 @@
+[package]
+name = "ebpf-tracker-perf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Future perf and ring buffer transport scaffolding for ebpf-tracker"
+publish = false
+
+[dependencies]
+ebpf-tracker-events = { path = "../ebpf-tracker-events" }

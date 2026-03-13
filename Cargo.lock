@@ -21,6 +21,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ebpf-tracker-otel"
+version = "0.1.0"
+dependencies = [
+ "ebpf-tracker-events",
+ "serde_json",
+]
+
+[[package]]
+name = "ebpf-tracker-perf"
+version = "0.1.0"
+dependencies = [
+ "ebpf-tracker-events",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

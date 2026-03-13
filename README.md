@@ -117,6 +117,15 @@ The JSONL event contract now lives in the shared workspace crate
 `crates/ebpf-tracker-events`, so future consumers can reuse the same parsing and
 record schema without embedding CLI-specific code.
 
+The first downstream scaffold now also exists:
+
+```bash
+eBPF_tracker --emit jsonl cargo run | cargo run -p ebpf-tracker-otel -- --target jaeger --service-name session-io-demo
+```
+
+That consumer currently validates and summarizes the stream for future OTLP and
+Jaeger export work. It is intentionally scaffold-only for now.
+
 ## Config
 
 If `ebpf-tracker.toml` exists in the current project, it is picked up automatically.
@@ -204,9 +213,10 @@ Expected today:
 ## Current Limitations
 
 - No Aya/native Rust eBPF probes yet
-- No OTLP export pipeline
+- No live OTLP export pipeline yet; `crates/ebpf-tracker-otel` is scaffold-only
 - No Kubernetes mode
 - No process-tree-only or target-only filtering
+- No native perf/ringbuf capture path yet; `crates/ebpf-tracker-perf` is a plan scaffold
 - No stable profile system like `minimal/default/full`
 
 ## Workspace Direction
@@ -215,8 +225,10 @@ This repo stays as one workspace, but the boundaries are now explicit:
 
 - the root package is the installable CLI that runs Docker + `bpftrace`
 - `crates/ebpf-tracker-events` owns the event parsing and JSONL stream schema
-- future viewers, OTLP exporters, or other consumers should be added as separate
-  crates under `crates/`
+- `crates/ebpf-tracker-otel` is the OTLP and Jaeger-oriented consumer scaffold
+- `crates/ebpf-tracker-perf` holds the future perf and ring buffer transport plan
+- future viewers or other consumers should be added as separate crates under
+  `crates/`
 - `examples/` stays reserved for runnable demo apps, not product code
 
 That keeps the core Unix contract clear: `eBPF_tracker` emits events, and other
@@ -225,8 +237,11 @@ tools decide how to render, store, or forward them.
 ## Repo Layout
 
 - `Cargo.toml`: workspace manifest plus installable CLI package metadata
-- `src/main.rs`: installable CLI entry point
+- `src/lib.rs`: installable CLI logic
+- `src/main.rs`: thin binary wrapper for the CLI crate
 - `crates/ebpf-tracker-events`: shared event schema and JSONL parsing crate
+- `crates/ebpf-tracker-otel`: scaffold consumer for OTLP and Jaeger export
+- `crates/ebpf-tracker-perf`: scaffold for future perf/ringbuf transport work
 - `ebpf-tracker.toml.example`: example config
 - `docker-compose.bpftrace.yml`: runtime definition
 - `docker/bpftrace-rust.Dockerfile`: runtime image
