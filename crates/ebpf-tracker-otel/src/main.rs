@@ -3,8 +3,8 @@ use std::io::{self, BufReader};
 use std::process;
 
 use ebpf_tracker_otel::{
-    export_jsonl, format_export_message, parse_target, run_jaeger, ExportConfig, JaegerCommand,
-    DEFAULT_JAEGER_UI_URL,
+    export_jsonl, format_export_message, parse_header, parse_target, run_jaeger, ExportConfig,
+    JaegerCommand, DEFAULT_JAEGER_UI_URL,
 };
 
 enum CliCommand {
@@ -15,12 +15,14 @@ enum CliCommand {
 
 fn print_usage() {
     eprintln!(
-        "Usage: ebpf-tracker-otel [--target <otlp|jaeger>] [--endpoint <url>] [--service-name <name>]"
+        "Usage: ebpf-tracker-otel [--target <otlp|jaeger>] [--endpoint <url>] [--service-name <name>] [--timeout-seconds <n>] [--header <name=value>]"
     );
     eprintln!("Usage: ebpf-tracker-otel jaeger <up|down|status>");
     eprintln!("Reads ebpf-tracker JSONL records from stdin and exports them as OTLP traces.");
     eprintln!("Cargo alias: cargo otel --target jaeger --service-name session-io-demo");
     eprintln!("Cargo alias: cargo jaeger up");
+    eprintln!("Example: cargo otel --target otlp --endpoint http://127.0.0.1:4318/v1/traces --timeout-seconds 15");
+    eprintln!("Example: cargo otel --header authorization=Bearer-token");
 }
 
 fn parse_export_args(args: &[String]) -> Result<ExportConfig, String> {
@@ -53,6 +55,22 @@ fn parse_export_args(args: &[String]) -> Result<ExportConfig, String> {
                 config.service_name = value.clone();
                 index += 2;
             }
+            "--timeout-seconds" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| "missing value for --timeout-seconds".to_string())?;
+                config.timeout_seconds = value
+                    .parse()
+                    .map_err(|_| format!("invalid timeout seconds: {value}"))?;
+                index += 2;
+            }
+            "--header" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| "missing value for --header".to_string())?;
+                config.headers.push(parse_header(value)?);
+                index += 2;
+            }
             _ if arg.starts_with("--target=") => {
                 let value = arg.trim_start_matches("--target=");
                 if value.is_empty() {
@@ -76,6 +94,24 @@ fn parse_export_args(args: &[String]) -> Result<ExportConfig, String> {
                     return Err("missing value for --service-name".to_string());
                 }
                 config.service_name = value.to_string();
+                index += 1;
+            }
+            _ if arg.starts_with("--timeout-seconds=") => {
+                let value = arg.trim_start_matches("--timeout-seconds=");
+                if value.is_empty() {
+                    return Err("missing value for --timeout-seconds".to_string());
+                }
+                config.timeout_seconds = value
+                    .parse()
+                    .map_err(|_| format!("invalid timeout seconds: {value}"))?;
+                index += 1;
+            }
+            _ if arg.starts_with("--header=") => {
+                let value = arg.trim_start_matches("--header=");
+                if value.is_empty() {
+                    return Err("missing value for --header".to_string());
+                }
+                config.headers.push(parse_header(value)?);
                 index += 1;
             }
             _ => return Err(format!("unknown flag: {arg}")),
@@ -159,6 +195,9 @@ fn main() {
                 }
             };
 
+            for warning in &summary.collector_warnings {
+                eprintln!("collector warning: {warning}");
+            }
             eprintln!("{}", format_export_message(&config, &summary));
         }
     }

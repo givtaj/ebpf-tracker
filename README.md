@@ -126,6 +126,19 @@ eBPF_tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name 
 That path groups raw records into a session span plus per-process spans, then
 exports them over OTLP to Jaeger or another collector.
 
+Hardened exporter controls:
+
+```bash
+eBPF_tracker --emit jsonl cargo run | cargo otel --target otlp --endpoint http://127.0.0.1:4318 --timeout-seconds 15 --header authorization=Bearer-token
+```
+
+The exporter now:
+
+- validates endpoint URLs and normalizes bare collector URLs to `/v1/traces`
+- rejects empty service names and zero timeouts
+- applies an explicit OTLP request timeout
+- surfaces collector-side partial rejections and warnings on `stderr`
+
 Local Jaeger flow:
 
 ```bash
