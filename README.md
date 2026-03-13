@@ -117,14 +117,23 @@ The JSONL event contract now lives in the shared workspace crate
 `crates/ebpf-tracker-events`, so future consumers can reuse the same parsing and
 record schema without embedding CLI-specific code.
 
-The first downstream scaffold now also exists:
+You can stream those records into the built-in OTLP consumer:
 
 ```bash
-eBPF_tracker --emit jsonl cargo run | cargo run -p ebpf-tracker-otel -- --target jaeger --service-name session-io-demo
+eBPF_tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name session-io-demo
 ```
 
-That consumer currently validates and summarizes the stream for future OTLP and
-Jaeger export work. It is intentionally scaffold-only for now.
+That path groups raw records into a session span plus per-process spans, then
+exports them over OTLP to Jaeger or another collector.
+
+Local Jaeger flow:
+
+```bash
+cargo jaeger up
+eBPF_tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name session-io-demo
+```
+
+Then open `http://127.0.0.1:16686`.
 
 ## Config
 
@@ -154,6 +163,10 @@ Available flags:
 - `probe.open`: trace `openat`
 - `probe.connect`: trace `connect`
 
+TODO:
+Add a separate `[runtime]` section in `ebpf-tracker.toml` for Docker runtime
+controls such as CPU, memory, CPU set, PID limits, and related runtime env.
+
 See `ebpf-tracker.toml.example`.
 
 ## First Example
@@ -181,6 +194,13 @@ Structured stream version:
 
 ```bash
 cargo demo --emit jsonl session-io-demo
+```
+
+Trace UI version:
+
+```bash
+cargo jaeger up
+cargo demo --emit jsonl session-io-demo | cargo otel --target jaeger --service-name session-io-demo
 ```
 
 ## Local Checks
@@ -213,7 +233,7 @@ Expected today:
 ## Current Limitations
 
 - No Aya/native Rust eBPF probes yet
-- No live OTLP export pipeline yet; `crates/ebpf-tracker-otel` is scaffold-only
+- OTLP export currently derives coarse session and process spans from the raw stream
 - No Kubernetes mode
 - No process-tree-only or target-only filtering
 - No native perf/ringbuf capture path yet; `crates/ebpf-tracker-perf` is a plan scaffold
@@ -225,7 +245,7 @@ This repo stays as one workspace, but the boundaries are now explicit:
 
 - the root package is the installable CLI that runs Docker + `bpftrace`
 - `crates/ebpf-tracker-events` owns the event parsing and JSONL stream schema
-- `crates/ebpf-tracker-otel` is the OTLP and Jaeger-oriented consumer scaffold
+- `crates/ebpf-tracker-otel` maps the JSONL stream into OTLP traces and can manage a local Jaeger collector
 - `crates/ebpf-tracker-perf` holds the future perf and ring buffer transport plan
 - future viewers or other consumers should be added as separate crates under
   `crates/`
@@ -240,7 +260,7 @@ tools decide how to render, store, or forward them.
 - `src/lib.rs`: installable CLI logic
 - `src/main.rs`: thin binary wrapper for the CLI crate
 - `crates/ebpf-tracker-events`: shared event schema and JSONL parsing crate
-- `crates/ebpf-tracker-otel`: scaffold consumer for OTLP and Jaeger export
+- `crates/ebpf-tracker-otel`: OTLP exporter plus local Jaeger helper commands
 - `crates/ebpf-tracker-perf`: scaffold for future perf/ringbuf transport work
 - `ebpf-tracker.toml.example`: example config
 - `docker-compose.bpftrace.yml`: runtime definition

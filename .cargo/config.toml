@@ -1,2 +1,4 @@
 [alias]
 demo = "run -p ebpf-tracker --bin eBPF_tracker -- demo"
+jaeger = "run -p ebpf-tracker-otel --bin ebpf-tracker-otel -- jaeger"
+otel = "run -p ebpf-tracker-otel --bin ebpf-tracker-otel --"

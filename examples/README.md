@@ -39,6 +39,13 @@ and runtime output.
 
 Without `--emit`, the default mode is `raw`.
 
+To view the same example in Jaeger:
+
+```bash
+cargo jaeger up
+cargo demo --emit jsonl session-io-demo | cargo otel --target jaeger --service-name session-io-demo
+```
+
 ## What To Expect
 
 - the first run may build the Docker image

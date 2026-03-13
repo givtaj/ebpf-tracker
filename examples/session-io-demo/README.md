@@ -28,6 +28,13 @@ stream directly.
 
 Without `--emit`, the default mode is `raw`.
 
+Send the same stream into Jaeger:
+
+```bash
+cargo jaeger up
+cargo demo --emit jsonl session-io-demo | cargo otel --target jaeger --service-name session-io-demo
+```
+
 Look for trace lines that show the benefit:
 
 - `openat` against `input/message.txt`

@@ -2,16 +2,28 @@ use std::env;
 use std::io::{self, BufReader};
 use std::process;
 
-use ebpf_tracker_otel::{consume_jsonl, parse_target, scaffold_message, ExportConfig};
+use ebpf_tracker_otel::{
+    export_jsonl, format_export_message, parse_target, run_jaeger, ExportConfig, JaegerCommand,
+    DEFAULT_JAEGER_UI_URL,
+};
 
-fn print_usage() {
-    eprintln!("Usage: ebpf-tracker-otel [--target <otlp|jaeger>] [--endpoint <url>] [--service-name <name>]");
-    eprintln!(
-        "Reads ebpf-tracker JSONL records from stdin and prepares them for future OTLP export."
-    );
+enum CliCommand {
+    Export(ExportConfig),
+    Jaeger(JaegerCommand),
+    Help,
 }
 
-fn parse_args(args: &[String]) -> Result<ExportConfig, String> {
+fn print_usage() {
+    eprintln!(
+        "Usage: ebpf-tracker-otel [--target <otlp|jaeger>] [--endpoint <url>] [--service-name <name>]"
+    );
+    eprintln!("Usage: ebpf-tracker-otel jaeger <up|down|status>");
+    eprintln!("Reads ebpf-tracker JSONL records from stdin and exports them as OTLP traces.");
+    eprintln!("Cargo alias: cargo otel --target jaeger --service-name session-io-demo");
+    eprintln!("Cargo alias: cargo jaeger up");
+}
+
+fn parse_export_args(args: &[String]) -> Result<ExportConfig, String> {
     let mut config = ExportConfig::default();
     let mut index = 0usize;
 
@@ -73,10 +85,42 @@ fn parse_args(args: &[String]) -> Result<ExportConfig, String> {
     Ok(config)
 }
 
+fn parse_jaeger_args(args: &[String]) -> Result<JaegerCommand, String> {
+    match args {
+        [] => Err("missing Jaeger action".to_string()),
+        [action] => match action.as_str() {
+            "up" => Ok(JaegerCommand::Up),
+            "down" => Ok(JaegerCommand::Down),
+            "status" => Ok(JaegerCommand::Status),
+            "-h" | "--help" | "help" => Err(String::new()),
+            _ => Err(format!("unknown Jaeger action: {action}")),
+        },
+        _ => Err("jaeger accepts exactly one action: up, down, or status".to_string()),
+    }
+}
+
+fn parse_args(args: &[String]) -> Result<CliCommand, String> {
+    match args {
+        [] => Ok(CliCommand::Export(ExportConfig::default())),
+        [single] if matches!(single.as_str(), "-h" | "--help" | "help") => Ok(CliCommand::Help),
+        [subcommand, rest @ ..] if subcommand == "jaeger" => {
+            if rest
+                .first()
+                .is_some_and(|value| matches!(value.as_str(), "-h" | "--help" | "help"))
+            {
+                Ok(CliCommand::Help)
+            } else {
+                Ok(CliCommand::Jaeger(parse_jaeger_args(rest)?))
+            }
+        }
+        _ => parse_export_args(args).map(CliCommand::Export),
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
-    let config = match parse_args(&args) {
-        Ok(config) => config,
+    let command = match parse_args(&args) {
+        Ok(command) => command,
         Err(message) if message.is_empty() => {
             print_usage();
             process::exit(0);
@@ -88,14 +132,34 @@ fn main() {
         }
     };
 
-    let stdin = io::stdin();
-    let summary = match consume_jsonl(BufReader::new(stdin.lock())) {
-        Ok(summary) => summary,
-        Err(message) => {
-            eprintln!("{message}");
-            process::exit(1);
+    match command {
+        CliCommand::Help => {
+            print_usage();
+            process::exit(0);
         }
-    };
+        CliCommand::Jaeger(action) => match run_jaeger(action) {
+            Ok(code) => {
+                if code == 0 && matches!(action, JaegerCommand::Up | JaegerCommand::Status) {
+                    eprintln!("Jaeger UI: {DEFAULT_JAEGER_UI_URL}");
+                }
+                process::exit(code);
+            }
+            Err(message) => {
+                eprintln!("{message}");
+                process::exit(1);
+            }
+        },
+        CliCommand::Export(config) => {
+            let stdin = io::stdin();
+            let summary = match export_jsonl(BufReader::new(stdin.lock()), &config) {
+                Ok(summary) => summary,
+                Err(message) => {
+                    eprintln!("{message}");
+                    process::exit(1);
+                }
+            };
 
-    eprintln!("{}", scaffold_message(&config, &summary));
+            eprintln!("{}", format_export_message(&config, &summary));
+        }
+    }
 }

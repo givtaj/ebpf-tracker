@@ -1,17 +1,26 @@
 # ebpf-tracker-otel
 
-Scaffold consumer for `ebpf-tracker` JSONL streams.
+OTLP exporter for `ebpf-tracker` JSONL streams.
 
 Current purpose:
 
 - read newline-delimited `StreamRecord` values from `stdin`
-- validate the stream contract shared by `crates/ebpf-tracker-events`
-- prepare the boundary for future OTLP and Jaeger export work
+- group the raw stream into a session span plus per-process spans
+- export those spans over OTLP to Jaeger or another collector
+- manage a local Jaeger collector with Cargo-native commands
 
 Current example:
 
 ```bash
-eBPF_tracker --emit jsonl cargo run | cargo run -p ebpf-tracker-otel -- --target jaeger --service-name session-io-demo
+cargo jaeger up
+eBPF_tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name session-io-demo
 ```
 
-Today this prints a scaffold summary to `stderr`. It does not send live traces yet.
+Useful commands:
+
+```bash
+cargo jaeger status
+cargo jaeger down
+```
+
+The raw JSONL stream remains the source of truth. This crate builds a trace view on top of it.

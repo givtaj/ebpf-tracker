@@ -3,3 +3,11 @@ exec = true
 write = true
 open = false
 connect = false
+
+# TODO(runtime): add a dedicated [runtime] section for Docker resource controls.
+# Example target shape:
+# [runtime]
+# cpus = 2.0
+# memory = "4g"
+# cpuset = "0-3"
+# pids_limit = 512

@@ -11,6 +11,17 @@ pub enum EventKind {
     Connect,
 }
 
+impl EventKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EventKind::Execve => "execve",
+            EventKind::OpenAt => "openat",
+            EventKind::Write => "write",
+            EventKind::Connect => "connect",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParsedEvent {
     pub kind: EventKind,
