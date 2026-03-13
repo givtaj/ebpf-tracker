@@ -99,34 +99,37 @@ eBPF_tracker --config ebpf-tracker.toml --emit jsonl cargo run -- transactions.c
 That gives you a tighter app-focused view without changing the underlying
 trace.
 
-## 5. Benchmark Snapshot
+## 5. What `eBPF_tracker` Measured
 
-On March 13, 2026, I generated a synthetic `transactions-10000.csv` with
-10,000 records across 100 clients and ran the native `payment-engine` binary on
-an Apple M4 laptop with 10 CPU cores and 16 GB RAM.
+For a larger project-shaped run, I generated a synthetic
+`transactions-10000.csv` with 10,000 records and traced this command:
 
-Observed input/output sizes:
+```bash
+eBPF_tracker --config ebpf-tracker.toml --transport perf --emit jsonl cargo run --release -- transactions-10000.csv
+```
 
-- input: `10,001` CSV lines, `208 KB`
-- output: `101` CSV lines, `2.1 KB`
+This is what came from `eBPF_tracker` itself:
 
-Observed native runtime numbers:
+- full traced run produced `41,739` JSONL records
+- aggregate counts at the end of the run:
+  - `execve = 158`
+  - `openat = 13097`
+  - `writes = 28472`
+  - `connects = 8`
+- app-specific records with `comm="payments_engin"`: `54`
+- app-specific `write` records: `5`
 
-- single release run: about `2.1-3.0 MB` peak RSS and `126.8M` retired instructions
-- `100` release runs: `0.78s` total, about `7.8 ms/run`
-- `100` debug runs: `3.97s` total, about `39.7 ms/run`
+Notes:
 
-What that means:
-
-- the engine is already lightweight at 10,000 records
-- release builds matter a lot for Rust CLI throughput here, roughly `5x` faster
-  than debug on this workload
-- the code is still effectively single-threaded, so the bottleneck is not CSV
-  parsing or file I/O at this scale
-
-The tracing workflow now isolates Cargo build outputs inside the container, so
-running `eBPF_tracker` against `cargo run` should not leave Linux artifacts in
-the host repo's `target/` tree.
+- Linux truncates `comm` to 15 characters, so `payments_engine` appears as
+  `payments_engin` in the stream.
+- These counts describe syscall behavior and event volume for the wrapped Cargo
+  session.
+- They do not describe CPU time, memory usage, instructions retired, or other
+  hardware-performance metrics.
+- The tracing workflow now isolates Cargo build outputs inside the container,
+  so running `eBPF_tracker` against `cargo run` should not leave Linux
+  artifacts in the host repo's `target/` tree.
 
 ## 6. Trace The Test Suite
 
