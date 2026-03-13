@@ -1,0 +1,11 @@
+services:
+  bpftrace:
+    build:
+      context: .
+      dockerfile: docker/bpftrace-rust.Dockerfile
+    privileged: true
+    pid: host
+    working_dir: /workspace
+    volumes:
+      - ${PROJECT_DIR:?set PROJECT_DIR}:/workspace
+      - ./probes:/probes:ro

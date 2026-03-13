@@ -1,0 +1,19 @@
+[package]
+name = "ebpf-tracker"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Rust CLI that wraps Cargo commands, runs them inside a Linux Docker runtime, and attaches bpftrace for session-based eBPF observability."
+readme = "README.md"
+repository = "https://github.com/givtaj/cargo-ebpf-tracker"
+homepage = "https://github.com/givtaj/cargo-ebpf-tracker"
+keywords = ["cargo", "ebpf", "bpftrace", "observability", "rust"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+
+[[bin]]
+name = "eBPF_tracker"
+path = "src/main.rs"
