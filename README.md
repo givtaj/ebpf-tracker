@@ -181,6 +181,12 @@ exec = true
 write = true
 open = false
 connect = false
+
+[runtime]
+cpus = 2.0
+memory = "4g"
+cpuset = "0-3"
+pids_limit = 512
 ```
 
 Available flags:
@@ -189,10 +195,10 @@ Available flags:
 - `probe.write`: trace `write`
 - `probe.open`: trace `openat`
 - `probe.connect`: trace `connect`
-
-TODO:
-Add a separate `[runtime]` section in `ebpf-tracker.toml` for Docker runtime
-controls such as CPU, memory, CPU set, PID limits, and related runtime env.
+- `runtime.cpus`: Docker CPU quota for the runtime container
+- `runtime.memory`: Docker memory limit like `512m` or `4g`
+- `runtime.cpuset`: Docker CPU set string like `0-3` or `0,1`
+- `runtime.pids_limit`: Docker PID limit, or `-1` for unlimited
 
 See `ebpf-tracker.toml.example`.
 
@@ -272,6 +278,14 @@ Expected today:
 - No direct perf-event-array or ringbuf capture path yet; the current alternate transport is Linux `perf trace`
 - In `--transport perf` mode, file-path fields are best-effort and may be absent when `perf trace` cannot decode userspace string arguments
 - No stable profile system like `minimal/default/full`
+
+## Next TODOs
+
+- Add process-tree-only and target-only filtering so the stream can focus on the app and its children instead of the whole wrapped session
+- Add stable stream profiles like `minimal`, `default`, and `full`
+- Add a separate viewer crate that reads JSONL from `stdin` and renders a first trace-focused TUI on top of the stream
+- Improve the OTel mapping with parent/child process relationships and better span/event semantics for Jaeger and other collectors
+- Add direct perf-event-array or ringbuf transport after the event model and stream UX are stable
 
 ## Workspace Direction
 

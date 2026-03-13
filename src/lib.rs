@@ -18,6 +18,7 @@ const DEFAULT_PROBE: &str = "/probes/execve.bt";
 const COMPOSE_FILE_NAME: &str = "docker-compose.bpftrace.yml";
 const DEFAULT_CONFIG_FILE_NAME: &str = "ebpf-tracker.toml";
 const GENERATED_CONFIG_PROBE_FILE_NAME: &str = "generated-config.bt";
+const GENERATED_RUNTIME_OVERRIDE_FILE_NAME: &str = "generated-runtime.override.yml";
 const DEFAULT_EXAMPLE_NAME: &str = "session-io-demo";
 const EXAMPLES_DIR_NAME: &str = "examples";
 const EMBEDDED_COMPOSE: &str = include_str!("../docker-compose.bpftrace.yml");
@@ -80,6 +81,8 @@ enum ParseOutcome {
 struct TrackerConfig {
     #[serde(default)]
     probe: ProbeConfig,
+    #[serde(default)]
+    runtime: RuntimeConfig,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -88,6 +91,14 @@ struct ProbeConfig {
     write: Option<bool>,
     open: Option<bool>,
     connect: Option<bool>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RuntimeConfig {
+    cpus: Option<f64>,
+    memory: Option<String>,
+    cpuset: Option<String>,
+    pids_limit: Option<i64>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -530,6 +541,16 @@ fn generated_probe_path(compose_file: &Path) -> Result<PathBuf, String> {
         .join(GENERATED_CONFIG_PROBE_FILE_NAME))
 }
 
+fn generated_runtime_override_path(compose_file: &Path) -> Result<PathBuf, String> {
+    let runtime_root = compose_file.parent().ok_or_else(|| {
+        format!(
+            "failed to determine runtime root from compose file {}",
+            compose_file.display()
+        )
+    })?;
+    Ok(runtime_root.join(GENERATED_RUNTIME_OVERRIDE_FILE_NAME))
+}
+
 fn resolve_tracker_config(
     explicit_config_path: Option<&Path>,
     project_dir: &Path,
@@ -541,6 +562,7 @@ fn resolve_tracker_config(
 fn resolve_probe_file(
     cli_args: &CliArgs,
     config: Option<&TrackerConfig>,
+    compose_file: &Path,
 ) -> Result<String, String> {
     if let Some(probe_file) = &cli_args.probe_file {
         return Ok(probe_file.clone());
@@ -548,12 +570,89 @@ fn resolve_probe_file(
 
     if let Some(config) = config {
         let generated_probe = build_generated_probe(&config.probe)?;
-        let output_path = generated_probe_path(&resolve_compose_file()?)?;
+        let output_path = generated_probe_path(compose_file)?;
         write_if_changed(&output_path, &generated_probe)?;
         return Ok(format!("/probes/{GENERATED_CONFIG_PROBE_FILE_NAME}"));
     }
 
     Ok(DEFAULT_PROBE.to_string())
+}
+
+fn resolve_runtime_override(
+    config: Option<&TrackerConfig>,
+    compose_file: &Path,
+) -> Result<Option<PathBuf>, String> {
+    let Some(config) = config else {
+        return Ok(None);
+    };
+
+    let Some(override_content) = build_runtime_override(&config.runtime)? else {
+        return Ok(None);
+    };
+
+    let output_path = generated_runtime_override_path(compose_file)?;
+    write_if_changed(&output_path, &override_content)?;
+    Ok(Some(output_path))
+}
+
+fn build_runtime_override(config: &RuntimeConfig) -> Result<Option<String>, String> {
+    let mut lines = Vec::new();
+
+    if let Some(cpus) = config.cpus {
+        if !cpus.is_finite() || cpus <= 0.0 {
+            return Err("runtime.cpus must be greater than zero".to_string());
+        }
+        lines.push(format!("    cpus: {cpus}"));
+    }
+
+    if let Some(memory) = config.memory.as_deref() {
+        let memory = memory.trim();
+        if memory.is_empty() {
+            return Err("runtime.memory must not be empty".to_string());
+        }
+        lines.push(format!("    mem_limit: {}", yaml_string(memory)));
+    }
+
+    if let Some(cpuset) = config.cpuset.as_deref() {
+        let cpuset = cpuset.trim();
+        if cpuset.is_empty() {
+            return Err("runtime.cpuset must not be empty".to_string());
+        }
+        if !cpuset
+            .chars()
+            .all(|ch| ch.is_ascii_digit() || ch == ',' || ch == '-')
+        {
+            return Err(
+                "runtime.cpuset must use only digits, commas, and hyphens like \"0-3\" or \"0,1\""
+                    .to_string(),
+            );
+        }
+        lines.push(format!("    cpuset: {}", yaml_string(cpuset)));
+    }
+
+    if let Some(pids_limit) = config.pids_limit {
+        if pids_limit == 0 || pids_limit < -1 {
+            return Err("runtime.pids_limit must be greater than zero or -1".to_string());
+        }
+        lines.push(format!("    pids_limit: {pids_limit}"));
+    }
+
+    if lines.is_empty() {
+        return Ok(None);
+    }
+
+    let mut content = String::from("services:\n  bpftrace:\n");
+    for line in lines {
+        content.push_str(&line);
+        content.push('\n');
+    }
+
+    Ok(Some(content))
+}
+
+fn yaml_string(value: &str) -> String {
+    let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{escaped}\"")
 }
 
 fn resolve_perf_events(
@@ -570,6 +669,7 @@ fn resolve_perf_events(
 
 fn build_compose_command(
     compose_file: &Path,
+    runtime_override_file: Option<&Path>,
     project_dir: &Path,
     cli_args: &CliArgs,
     probe_file: Option<&str>,
@@ -577,13 +677,13 @@ fn build_compose_command(
     wrapped_command: &[String],
 ) -> Command {
     let mut command = Command::new("docker");
-    command
-        .arg("compose")
-        .arg("-f")
-        .arg(compose_file)
-        .arg("run")
-        .arg("--build")
-        .arg("--rm");
+    command.arg("compose").arg("-f").arg(compose_file);
+
+    if let Some(runtime_override_file) = runtime_override_file {
+        command.arg("-f").arg(runtime_override_file);
+    }
+
+    command.arg("run").arg("--build").arg("--rm");
 
     command.arg("-e").arg(format!(
         "EBPF_TRACKER_TRANSPORT={}",
@@ -1008,12 +1108,21 @@ fn run_demo(demo_args: DemoArgs) -> Result<i32, String> {
 fn run_cli(cli_args: CliArgs, project_dir: PathBuf) -> Result<i32, String> {
     let config = resolve_tracker_config(cli_args.config_path.as_deref(), &project_dir)?;
     let compose_file = resolve_compose_file()?;
+    let runtime_override = resolve_runtime_override(config.as_ref(), &compose_file)?;
     let (probe_file, perf_events) = match cli_args.transport_mode {
-        TransportMode::Bpftrace => (Some(resolve_probe_file(&cli_args, config.as_ref())?), None),
+        TransportMode::Bpftrace => (
+            Some(resolve_probe_file(
+                &cli_args,
+                config.as_ref(),
+                &compose_file,
+            )?),
+            None,
+        ),
         TransportMode::Perf => (None, Some(resolve_perf_events(&cli_args, config.as_ref())?)),
     };
     let command = build_compose_command(
         &compose_file,
+        runtime_override.as_deref(),
         &project_dir,
         &cli_args,
         probe_file.as_deref(),
@@ -1064,7 +1173,7 @@ pub fn main_entry() -> i32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_generated_probe, load_config};
+    use super::{build_generated_probe, build_runtime_override, load_config, RuntimeConfig};
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -1104,5 +1213,81 @@ mod tests {
         assert_eq!(config.probe.connect, Some(true));
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn config_parses_runtime_controls() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be monotonic")
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!("ebpf-tracker-runtime-config-{unique}.toml"));
+        fs::write(
+            &path,
+            "[probe]\nexec = true\n\n[runtime]\ncpus = 2.0\nmemory = \"512m\"\ncpuset = \"0-1\"\npids_limit = 256\n",
+        )
+        .expect("config file should be written");
+
+        let config = load_config(&path).expect("config should parse");
+        assert_eq!(config.runtime.cpus, Some(2.0));
+        assert_eq!(config.runtime.memory.as_deref(), Some("512m"));
+        assert_eq!(config.runtime.cpuset.as_deref(), Some("0-1"));
+        assert_eq!(config.runtime.pids_limit, Some(256));
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn runtime_override_contains_requested_docker_controls() {
+        let override_content = build_runtime_override(&RuntimeConfig {
+            cpus: Some(1.5),
+            memory: Some("2g".to_string()),
+            cpuset: Some("0-3".to_string()),
+            pids_limit: Some(512),
+        })
+        .expect("runtime override should build")
+        .expect("runtime override should not be empty");
+
+        assert!(override_content.contains("services:"));
+        assert!(override_content.contains("  bpftrace:"));
+        assert!(override_content.contains("    cpus: 1.5"));
+        assert!(override_content.contains("    mem_limit: \"2g\""));
+        assert!(override_content.contains("    cpuset: \"0-3\""));
+        assert!(override_content.contains("    pids_limit: 512"));
+    }
+
+    #[test]
+    fn runtime_override_rejects_invalid_values() {
+        assert!(build_runtime_override(&RuntimeConfig {
+            cpus: Some(0.0),
+            memory: None,
+            cpuset: None,
+            pids_limit: None,
+        })
+        .is_err());
+
+        assert!(build_runtime_override(&RuntimeConfig {
+            cpus: None,
+            memory: Some("   ".to_string()),
+            cpuset: None,
+            pids_limit: None,
+        })
+        .is_err());
+
+        assert!(build_runtime_override(&RuntimeConfig {
+            cpus: None,
+            memory: None,
+            cpuset: Some("0,1,a".to_string()),
+            pids_limit: None,
+        })
+        .is_err());
+
+        assert!(build_runtime_override(&RuntimeConfig {
+            cpus: None,
+            memory: None,
+            cpuset: None,
+            pids_limit: Some(0),
+        })
+        .is_err());
     }
 }

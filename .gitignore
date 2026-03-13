@@ -6,6 +6,7 @@ ebpf-tracker.toml
 probes/*.local.bt
 .scratch/
 tmp/
+generated-runtime.override.yml
 examples/**/target/
 examples/**/logs/
 examples/**/Cargo.lock

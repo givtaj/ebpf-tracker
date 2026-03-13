@@ -3,3 +3,10 @@ exec = true
 write = true
 open = true
 connect = true
+
+[runtime]
+# Optional Docker runtime limits for the demo container.
+# cpus = 2.0
+# memory = "2g"
+# cpuset = "0-1"
+# pids_limit = 256

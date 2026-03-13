@@ -4,9 +4,9 @@ write = true
 open = false
 connect = false
 
-# TODO(runtime): add a dedicated [runtime] section for Docker resource controls.
-# Example target shape:
-# [runtime]
+[runtime]
+# Optional Docker runtime limits for the wrapped Linux container.
+# Leave values commented out to use the engine defaults.
 # cpus = 2.0
 # memory = "4g"
 # cpuset = "0-3"
