@@ -1,4 +1,12 @@
 /target
 .DS_Store
 logs/
+ebpf-tracker.toml
+!examples/**/ebpf-tracker.toml
+probes/*.local.bt
+.scratch/
+tmp/
+examples/**/target/
+examples/**/logs/
+examples/**/Cargo.lock
 probes/generated-config.bt

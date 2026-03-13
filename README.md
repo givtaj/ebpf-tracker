@@ -125,6 +125,27 @@ Available flags:
 
 See `ebpf-tracker.toml.example`.
 
+## First Example
+
+The first example worth running is
+[`examples/session-io-demo`](./examples/session-io-demo/README.md).
+
+All examples are indexed in
+[`examples/README.md`](./examples/README.md), including the Cargo-based way to
+run them.
+
+It shows why session-based tracing is useful:
+
+- `build.rs` reads and generates files during `cargo run`
+- the app reads a file, opens a local TCP connection, and writes a summary file
+- one `eBPF_tracker` run surfaces all of that activity without changing app code
+
+Run it with:
+
+```bash
+cargo demo
+```
+
 ## Local Checks
 
 Smoke check:

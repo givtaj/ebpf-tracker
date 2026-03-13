@@ -13,6 +13,8 @@ const DEFAULT_PROBE: &str = "/probes/execve.bt";
 const COMPOSE_FILE_NAME: &str = "docker-compose.bpftrace.yml";
 const DEFAULT_CONFIG_FILE_NAME: &str = "ebpf-tracker.toml";
 const GENERATED_CONFIG_PROBE_FILE_NAME: &str = "generated-config.bt";
+const DEFAULT_EXAMPLE_NAME: &str = "session-io-demo";
+const EXAMPLES_DIR_NAME: &str = "examples";
 const EMBEDDED_COMPOSE: &str = include_str!("../docker-compose.bpftrace.yml");
 const EMBEDDED_DOCKERFILE: &str = include_str!("../docker/bpftrace-rust.Dockerfile");
 const EMBEDDED_RUN_SCRIPT: &str = include_str!("../scripts/run-bpftrace-wrap.sh");
@@ -53,8 +55,15 @@ struct CliArgs {
     command: Vec<String>,
 }
 
+#[derive(Debug)]
+struct DemoArgs {
+    example_name: Option<String>,
+    list_examples: bool,
+}
+
 enum ParseOutcome {
     Help,
+    Demo(DemoArgs),
     Run(CliArgs),
 }
 
@@ -76,11 +85,15 @@ fn print_usage() {
     eprintln!(
         "Usage: eBPF_tracker [--probe <file-or-name>] [--config <path>] [--log-enable] <command> [args...]"
     );
+    eprintln!("Usage: eBPF_tracker demo [--list] [example-name]");
     eprintln!("Example: eBPF_tracker cargo run");
     eprintln!("Example: eBPF_tracker --config ebpf-tracker.toml cargo run");
     eprintln!("Example: eBPF_tracker --probe execve.bt cargo run");
     eprintln!("Example: eBPF_tracker --probe ./probes/custom.bt cargo run");
     eprintln!("Example: eBPF_tracker --log-enable cargo test");
+    eprintln!("Example: cargo demo");
+    eprintln!("Example: cargo demo session-io-demo");
+    eprintln!("Example: cargo demo --list");
 }
 
 fn resolve_probe_path(raw_probe: &str) -> String {
@@ -94,6 +107,10 @@ fn resolve_probe_path(raw_probe: &str) -> String {
 }
 
 fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
+    if matches!(args.first().map(String::as_str), Some("demo")) {
+        return parse_demo_args(&args[1..]);
+    }
+
     let mut probe_file = None;
     let mut config_path = None;
     let mut log_enable = false;
@@ -155,6 +172,26 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
         config_path,
         log_enable,
         command,
+    }))
+}
+
+fn parse_demo_args(args: &[String]) -> Result<ParseOutcome, String> {
+    let mut example_name = None;
+    let mut list_examples = false;
+
+    for arg in args {
+        match arg.as_str() {
+            "-h" | "--help" => return Ok(ParseOutcome::Help),
+            "--list" => list_examples = true,
+            _ if arg.starts_with('-') => return Err(format!("unknown demo flag: {arg}")),
+            _ if example_name.is_none() => example_name = Some(arg.clone()),
+            _ => return Err("demo accepts at most one example name".to_string()),
+        }
+    }
+
+    Ok(ParseOutcome::Demo(DemoArgs {
+        example_name,
+        list_examples,
     }))
 }
 
@@ -501,19 +538,115 @@ fn run_with_log(mut command: Command, project_dir: &Path) -> Result<i32, String>
     Ok(exit_code(status))
 }
 
-fn run() -> Result<i32, String> {
-    let args: Vec<String> = env::args().skip(1).collect();
-    let parsed = parse_args(args)?;
-    let cli_args = match parsed {
-        ParseOutcome::Help => {
-            print_usage();
-            return Ok(0);
+fn repo_root_from(start_dir: &Path) -> Result<PathBuf, String> {
+    for ancestor in start_dir.ancestors() {
+        let manifest = ancestor.join("Cargo.toml");
+        let main_rs = ancestor.join("src").join("main.rs");
+        let examples = ancestor.join(EXAMPLES_DIR_NAME);
+        if manifest.is_file() && main_rs.is_file() && examples.is_dir() {
+            return Ok(ancestor.to_path_buf());
         }
-        ParseOutcome::Run(cli_args) => cli_args,
-    };
+    }
 
-    let project_dir =
+    Err("demo mode must be run from the repository root or one of its subdirectories".to_string())
+}
+
+fn available_examples(repo_root: &Path) -> Result<Vec<String>, String> {
+    let mut examples = Vec::new();
+    let examples_dir = repo_root.join(EXAMPLES_DIR_NAME);
+
+    for entry in fs::read_dir(&examples_dir)
+        .map_err(|err| format!("failed to read {}: {err}", examples_dir.display()))?
+    {
+        let entry =
+            entry.map_err(|err| format!("failed to read {}: {err}", examples_dir.display()))?;
+        let path = entry.path();
+        if path.is_dir() && path.join("Cargo.toml").is_file() {
+            examples.push(entry.file_name().to_string_lossy().to_string());
+        }
+    }
+
+    examples.sort();
+    Ok(examples)
+}
+
+fn resolve_example_dir(repo_root: &Path, example_name: &str) -> Result<PathBuf, String> {
+    let example_dir = repo_root.join(EXAMPLES_DIR_NAME).join(example_name);
+    if example_dir.join("Cargo.toml").is_file() {
+        Ok(example_dir)
+    } else {
+        let examples = available_examples(repo_root)?;
+        let available = if examples.is_empty() {
+            "none".to_string()
+        } else {
+            examples.join(", ")
+        };
+        Err(format!(
+            "unknown example: {example_name}. available examples: {available}"
+        ))
+    }
+}
+
+fn clean_example(example_dir: &Path) -> Result<(), String> {
+    let status = Command::new("cargo")
+        .arg("clean")
+        .arg("--target-dir")
+        .arg("target")
+        .current_dir(example_dir)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .map_err(|err| {
+            format!(
+                "failed to run cargo clean in {}: {err}",
+                example_dir.display()
+            )
+        })?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "cargo clean failed in {} with exit code {}",
+            example_dir.display(),
+            exit_code(status)
+        ))
+    }
+}
+
+fn run_demo(demo_args: DemoArgs) -> Result<i32, String> {
+    let current_dir =
         env::current_dir().map_err(|err| format!("failed to read current dir: {err}"))?;
+    let repo_root = repo_root_from(&current_dir)?;
+
+    if demo_args.list_examples {
+        for example in available_examples(&repo_root)? {
+            println!("{example}");
+        }
+        return Ok(0);
+    }
+
+    let example_name = demo_args
+        .example_name
+        .unwrap_or_else(|| DEFAULT_EXAMPLE_NAME.to_string());
+    let example_dir = resolve_example_dir(&repo_root, &example_name)?;
+
+    eprintln!("Running example: {example_name}");
+    clean_example(&example_dir)?;
+
+    run_cli(
+        CliArgs {
+            probe_file: None,
+            config_path: Some(PathBuf::from(DEFAULT_CONFIG_FILE_NAME)),
+            log_enable: false,
+            command: vec!["cargo".to_string(), "run".to_string()],
+        },
+        example_dir,
+    )
+}
+
+fn run_cli(cli_args: CliArgs, project_dir: PathBuf) -> Result<i32, String> {
     let (compose_file, probe_file) = resolve_probe_file(&cli_args, &project_dir)?;
     let command =
         build_compose_command(&compose_file, &project_dir, &probe_file, &cli_args.command);
@@ -522,6 +655,22 @@ fn run() -> Result<i32, String> {
         run_with_log(command, &project_dir)
     } else {
         run_without_log(command)
+    }
+}
+
+fn run() -> Result<i32, String> {
+    let args: Vec<String> = env::args().skip(1).collect();
+    match parse_args(args)? {
+        ParseOutcome::Help => {
+            print_usage();
+            Ok(0)
+        }
+        ParseOutcome::Demo(demo_args) => run_demo(demo_args),
+        ParseOutcome::Run(cli_args) => {
+            let project_dir =
+                env::current_dir().map_err(|err| format!("failed to read current dir: {err}"))?;
+            run_cli(cli_args, project_dir)
+        }
     }
 }
 
