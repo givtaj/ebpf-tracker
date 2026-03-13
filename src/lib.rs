@@ -136,11 +136,9 @@ fn print_usage() {
     eprintln!("Example: eBPF_tracker --log-enable cargo test");
     eprintln!("Example: eBPF_tracker --emit jsonl cargo run");
     eprintln!("Example: eBPF_tracker --transport perf --emit jsonl cargo run");
-    eprintln!("Example: cargo demo");
-    eprintln!("Example: cargo demo session-io-demo");
-    eprintln!("Example: cargo demo --list");
-    eprintln!("Example: cargo demo --transport perf --emit jsonl session-io-demo");
-    eprintln!("Example: cargo demo --emit jsonl session-io-demo");
+    eprintln!("Repository demo mode: eBPF_tracker demo --list");
+    eprintln!("Repository demo example: eBPF_tracker demo --emit jsonl session-io-demo");
+    eprintln!("The demo subcommand expects a local clone of cargo-ebpf-tracker.");
 }
 
 fn resolve_probe_path(raw_probe: &str) -> String {

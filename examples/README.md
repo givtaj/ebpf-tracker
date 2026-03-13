@@ -2,6 +2,9 @@
 
 This directory contains runnable demo projects for `eBPF_tracker`.
 
+These examples are for people working from a local clone of
+`cargo-ebpf-tracker`. They are not installed by `cargo install`.
+
 ## How To Run An Example
 
 Recommended from the repo root:

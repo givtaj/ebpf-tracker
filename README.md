@@ -59,6 +59,12 @@ eBPF_tracker --help
 eBPF_tracker cargo run
 ```
 
+That installs the `eBPF_tracker` binary only.
+
+Repo-local helpers such as `cargo demo`, `cargo otel`, and `cargo jaeger` are
+workspace aliases for contributors or people running from a local clone of this
+repository. They are not installed as standalone commands by `cargo install`.
+
 Runtime assets are materialized under `~/.cache/ebpf-tracker` by default.
 
 Override that location with:
@@ -119,37 +125,6 @@ The JSONL event contract now lives in the shared workspace crate
 `crates/ebpf-tracker-events`, so future consumers can reuse the same parsing and
 record schema without embedding CLI-specific code.
 
-You can stream those records into the built-in OTLP consumer:
-
-```bash
-eBPF_tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name session-io-demo
-```
-
-That path groups raw records into a session span plus per-process spans, then
-exports them over OTLP to Jaeger or another collector.
-
-Hardened exporter controls:
-
-```bash
-eBPF_tracker --emit jsonl cargo run | cargo otel --target otlp --endpoint http://127.0.0.1:4318 --timeout-seconds 15 --header authorization=Bearer-token
-```
-
-The exporter now:
-
-- validates endpoint URLs and normalizes bare collector URLs to `/v1/traces`
-- rejects empty service names and zero timeouts
-- applies an explicit OTLP request timeout
-- surfaces collector-side partial rejections and warnings on `stderr`
-
-Local Jaeger flow:
-
-```bash
-cargo jaeger up
-eBPF_tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name session-io-demo
-```
-
-Then open `http://127.0.0.1:16686`.
-
 Alternate runtime transport:
 
 ```bash
@@ -202,9 +177,48 @@ Available flags:
 
 See `ebpf-tracker.toml.example`.
 
-## First Example
+## Repo Workspace Helpers
 
-The first example worth running is
+If you have cloned this repository, the workspace also includes:
+
+- `cargo demo`: repo-local example runner
+- `cargo otel`: repo-local OTLP exporter for the JSONL stream
+- `cargo jaeger`: repo-local Jaeger helper commands
+
+OTLP example from a local clone:
+
+```bash
+eBPF_tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name session-io-demo
+```
+
+That path groups raw records into a session span plus per-process spans, then
+exports them over OTLP to Jaeger or another collector.
+
+Hardened exporter controls:
+
+```bash
+eBPF_tracker --emit jsonl cargo run | cargo otel --target otlp --endpoint http://127.0.0.1:4318 --timeout-seconds 15 --header authorization=Bearer-token
+```
+
+The exporter now:
+
+- validates endpoint URLs and normalizes bare collector URLs to `/v1/traces`
+- rejects empty service names and zero timeouts
+- applies an explicit OTLP request timeout
+- surfaces collector-side partial rejections and warnings on `stderr`
+
+Local Jaeger flow from a clone:
+
+```bash
+cargo jaeger up
+eBPF_tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name session-io-demo
+```
+
+Then open `http://127.0.0.1:16686`.
+
+## Examples In This Repository
+
+If you have cloned this repository, the first example worth running is
 [`examples/session-io-demo`](./examples/session-io-demo/README.md).
 
 All examples are indexed in
@@ -217,7 +231,7 @@ It shows why session-based tracing is useful:
 - the app reads a file, opens a local TCP connection, and writes a summary file
 - one `eBPF_tracker` run surfaces all of that activity without changing app code
 
-Run it with:
+Run it from the repository root with:
 
 ```bash
 cargo demo
@@ -256,11 +270,17 @@ Installed-binary check from a Rust project:
 eBPF_tracker cargo run
 ```
 
-Config-driven check:
+Config-driven check from a Rust project:
 
 ```bash
 cp ebpf-tracker.toml.example ebpf-tracker.toml
 eBPF_tracker cargo run
+```
+
+Repository demo check:
+
+```bash
+eBPF_tracker demo --list
 ```
 
 Expected today:

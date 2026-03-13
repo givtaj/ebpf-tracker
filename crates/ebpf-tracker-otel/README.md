@@ -2,6 +2,10 @@
 
 OTLP exporter for `ebpf-tracker` JSONL streams.
 
+This crate currently ships as a workspace helper for people running from a
+local clone of `cargo-ebpf-tracker`. The `cargo otel` and `cargo jaeger`
+commands below come from repo-local Cargo aliases.
+
 Current purpose:
 
 - read newline-delimited `StreamRecord` values from `stdin`

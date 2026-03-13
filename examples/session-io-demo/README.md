@@ -4,6 +4,8 @@ This example shows the main benefit of `eBPF_tracker`: one wrapped `cargo run`
 surfaces both build-time and runtime activity without adding instrumentation to
 the Rust code.
 
+It is meant to be run from a local clone of `cargo-ebpf-tracker`.
+
 What the demo does:
 
 - `build.rs` reads `input/message.txt` and writes generated Rust into `target`
