@@ -8,7 +8,7 @@ The public GitHub repo is `cargo-ebpf-tracker`:
 
 - Installable as a Cargo binary.
 - Runs the wrapped command inside a privileged Docker Linux runtime.
-- Uses `bpftrace`, not Aya, for the first release.
+- Uses `bpftrace` by default and now supports a `perf trace` transport.
 - Default built-in probe is `execve.bt`.
 - Supports config-driven generated probes for `exec`, `write`, `open`, and `connect`.
 - Can mirror terminal output into `./logs`.
@@ -82,6 +82,7 @@ eBPF_tracker cargo test
 eBPF_tracker cargo check
 eBPF_tracker --log-enable cargo run
 eBPF_tracker --emit jsonl cargo run
+eBPF_tracker --transport perf cargo run
 ```
 
 Built-in probe by name:
@@ -109,6 +110,7 @@ In `jsonl` mode:
 - `stdout` emits newline-delimited JSON syscall and aggregate events
 - `stderr` keeps normal build output, app output, and runtime errors human-readable
 - without `--emit`, the default mode is `raw`
+- without `--transport`, the default transport is `bpftrace`
 
 That makes it easy to pipe the trace stream into another tool that renders a UI,
 stores the events, or applies custom filtering.
@@ -147,6 +149,18 @@ eBPF_tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name 
 ```
 
 Then open `http://127.0.0.1:16686`.
+
+Alternate runtime transport:
+
+```bash
+eBPF_tracker --transport perf --emit jsonl cargo run
+```
+
+That uses Linux `perf trace` inside the same Docker runtime and normalizes the
+result into the same JSONL contract. Today the `perf` path is strongest for
+`execve`, `write`, `connect`, and aggregate counts; file-path arguments are
+best-effort because plain `perf trace` does not always decode userspace string
+pointers.
 
 ## Config
 
@@ -209,6 +223,12 @@ Structured stream version:
 cargo demo --emit jsonl session-io-demo
 ```
 
+Same example with the `perf` transport:
+
+```bash
+cargo demo --transport perf --emit jsonl session-io-demo
+```
+
 Trace UI version:
 
 ```bash
@@ -249,7 +269,8 @@ Expected today:
 - OTLP export currently derives coarse session and process spans from the raw stream
 - No Kubernetes mode
 - No process-tree-only or target-only filtering
-- No native perf/ringbuf capture path yet; `crates/ebpf-tracker-perf` is a plan scaffold
+- No direct perf-event-array or ringbuf capture path yet; the current alternate transport is Linux `perf trace`
+- In `--transport perf` mode, file-path fields are best-effort and may be absent when `perf trace` cannot decode userspace string arguments
 - No stable profile system like `minimal/default/full`
 
 ## Workspace Direction
@@ -259,7 +280,7 @@ This repo stays as one workspace, but the boundaries are now explicit:
 - the root package is the installable CLI that runs Docker + `bpftrace`
 - `crates/ebpf-tracker-events` owns the event parsing and JSONL stream schema
 - `crates/ebpf-tracker-otel` maps the JSONL stream into OTLP traces and can manage a local Jaeger collector
-- `crates/ebpf-tracker-perf` holds the future perf and ring buffer transport plan
+- `crates/ebpf-tracker-perf` normalizes Linux `perf trace` output today and holds the future perf-event-array/ringbuf work
 - future viewers or other consumers should be added as separate crates under
   `crates/`
 - `examples/` stays reserved for runnable demo apps, not product code
@@ -274,7 +295,7 @@ tools decide how to render, store, or forward them.
 - `src/main.rs`: thin binary wrapper for the CLI crate
 - `crates/ebpf-tracker-events`: shared event schema and JSONL parsing crate
 - `crates/ebpf-tracker-otel`: OTLP exporter plus local Jaeger helper commands
-- `crates/ebpf-tracker-perf`: scaffold for future perf/ringbuf transport work
+- `crates/ebpf-tracker-perf`: `perf trace` normalization plus future perf/ringbuf transport work
 - `ebpf-tracker.toml.example`: example config
 - `docker-compose.bpftrace.yml`: runtime definition
 - `docker/bpftrace-rust.Dockerfile`: runtime image

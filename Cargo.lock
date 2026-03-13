@@ -113,6 +113,7 @@ name = "ebpf-tracker"
 version = "0.1.0"
 dependencies = [
  "ebpf-tracker-events",
+ "ebpf-tracker-perf",
  "serde",
  "serde_json",
  "toml",

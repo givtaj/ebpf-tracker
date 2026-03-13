@@ -28,6 +28,17 @@ stream directly.
 
 Without `--emit`, the default mode is `raw`.
 
+Run the same demo with the `perf` transport:
+
+```bash
+cargo demo --transport perf --emit jsonl session-io-demo
+```
+
+That keeps the JSONL contract stable while switching the runtime collector from
+`bpftrace` to Linux `perf trace`. In `perf` mode, the `connect` and `write`
+events stay useful, while `openat` file paths are best-effort and may be
+omitted when `perf trace` cannot decode userspace string arguments.
+
 Send the same stream into Jaeger:
 
 ```bash

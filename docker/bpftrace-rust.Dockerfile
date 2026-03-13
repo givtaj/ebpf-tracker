@@ -1,7 +1,7 @@
 FROM rust:1-bookworm
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends bpftrace kmod \
+    && apt-get install -y --no-install-recommends bpftrace kmod linux-perf \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace

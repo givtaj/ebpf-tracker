@@ -18,6 +18,12 @@ To run a specific example:
 cargo demo session-io-demo
 ```
 
+To run the same example with the `perf` transport:
+
+```bash
+cargo demo --transport perf session-io-demo
+```
+
 To see the list of available examples:
 
 ```bash
@@ -38,6 +44,18 @@ pipe, store, or render the trace stream while `stderr` still shows normal app
 and runtime output.
 
 Without `--emit`, the default mode is `raw`.
+Without `--transport`, the default transport is `bpftrace`.
+
+The `perf` transport is available too:
+
+```bash
+cargo demo --transport perf --emit jsonl session-io-demo
+```
+
+That keeps the same JSONL contract while swapping the runtime collector from
+`bpftrace` to Linux `perf trace`. In `perf` mode, file-path fields are
+best-effort and may be omitted when `perf trace` cannot decode userspace string
+arguments.
 
 To view the same example in Jaeger:
 
