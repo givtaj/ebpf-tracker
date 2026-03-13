@@ -17,6 +17,17 @@ Run it from the repo root:
 cargo demo session-io-demo
 ```
 
+Stream the same demo as JSON Lines:
+
+```bash
+cargo demo --emit jsonl session-io-demo
+```
+
+That keeps `stdout` machine-readable so another program can consume the event
+stream directly.
+
+Without `--emit`, the default mode is `raw`.
+
 Look for trace lines that show the benefit:
 
 - `openat` against `input/message.txt`

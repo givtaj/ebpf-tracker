@@ -1,13 +1,13 @@
 use std::env;
 use std::fs::{self, File};
-use std::io::{self, Read, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{self, Command, ExitStatus, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const DEFAULT_PROBE: &str = "/probes/execve.bt";
 const COMPOSE_FILE_NAME: &str = "docker-compose.bpftrace.yml";
@@ -52,6 +52,7 @@ struct CliArgs {
     probe_file: Option<String>,
     config_path: Option<PathBuf>,
     log_enable: bool,
+    emit_mode: EmitMode,
     command: Vec<String>,
 }
 
@@ -59,6 +60,7 @@ struct CliArgs {
 struct DemoArgs {
     example_name: Option<String>,
     list_examples: bool,
+    emit_mode: EmitMode,
 }
 
 enum ParseOutcome {
@@ -81,19 +83,75 @@ struct ProbeConfig {
     connect: Option<bool>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EmitMode {
+    Raw,
+    Jsonl,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum EventKind {
+    Execve,
+    OpenAt,
+    Write,
+    Connect,
+}
+
+#[derive(Debug)]
+struct ParsedEvent {
+    kind: EventKind,
+    comm: String,
+    pid: u32,
+    file: Option<String>,
+    bytes: Option<u64>,
+    fd: Option<i32>,
+}
+
+#[derive(Debug)]
+enum ParsedLine {
+    Event(ParsedEvent),
+    Aggregate { name: String, value: u64 },
+    Text,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum StreamRecord {
+    Syscall {
+        timestamp_unix_ms: u64,
+        kind: &'static str,
+        comm: String,
+        pid: u32,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        file: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        bytes: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        fd: Option<i32>,
+    },
+    Aggregate {
+        timestamp_unix_ms: u64,
+        metric: String,
+        value: u64,
+    },
+}
+
 fn print_usage() {
     eprintln!(
-        "Usage: eBPF_tracker [--probe <file-or-name>] [--config <path>] [--log-enable] <command> [args...]"
+        "Usage: eBPF_tracker [--probe <file-or-name>] [--config <path>] [--log-enable] [--emit <raw|jsonl>] <command> [args...]"
     );
-    eprintln!("Usage: eBPF_tracker demo [--list] [example-name]");
+    eprintln!("Usage: eBPF_tracker demo [--list] [--emit <raw|jsonl>] [example-name]");
+    eprintln!("Default emit mode: raw");
     eprintln!("Example: eBPF_tracker cargo run");
     eprintln!("Example: eBPF_tracker --config ebpf-tracker.toml cargo run");
     eprintln!("Example: eBPF_tracker --probe execve.bt cargo run");
     eprintln!("Example: eBPF_tracker --probe ./probes/custom.bt cargo run");
     eprintln!("Example: eBPF_tracker --log-enable cargo test");
+    eprintln!("Example: eBPF_tracker --emit jsonl cargo run");
     eprintln!("Example: cargo demo");
     eprintln!("Example: cargo demo session-io-demo");
     eprintln!("Example: cargo demo --list");
+    eprintln!("Example: cargo demo --emit jsonl session-io-demo");
 }
 
 fn resolve_probe_path(raw_probe: &str) -> String {
@@ -106,6 +164,14 @@ fn resolve_probe_path(raw_probe: &str) -> String {
     }
 }
 
+fn parse_emit_mode(raw_mode: &str) -> Result<EmitMode, String> {
+    match raw_mode {
+        "raw" => Ok(EmitMode::Raw),
+        "jsonl" => Ok(EmitMode::Jsonl),
+        _ => Err(format!("unsupported emit mode: {raw_mode}")),
+    }
+}
+
 fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
     if matches!(args.first().map(String::as_str), Some("demo")) {
         return parse_demo_args(&args[1..]);
@@ -114,6 +180,7 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
     let mut probe_file = None;
     let mut config_path = None;
     let mut log_enable = false;
+    let mut emit_mode = EmitMode::Raw;
     let mut index = 0usize;
 
     while index < args.len() {
@@ -137,6 +204,13 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
                 log_enable = true;
                 index += 1;
             }
+            "--emit" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| "missing value for --emit".to_string())?;
+                emit_mode = parse_emit_mode(value)?;
+                index += 2;
+            }
             "-h" | "--help" => return Ok(ParseOutcome::Help),
             "--" => {
                 index += 1;
@@ -158,6 +232,14 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
                 config_path = Some(PathBuf::from(value));
                 index += 1;
             }
+            _ if arg.starts_with("--emit=") => {
+                let value = arg.trim_start_matches("--emit=");
+                if value.is_empty() {
+                    return Err("missing value for --emit".to_string());
+                }
+                emit_mode = parse_emit_mode(value)?;
+                index += 1;
+            }
             _ => break,
         }
     }
@@ -171,6 +253,7 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
         probe_file,
         config_path,
         log_enable,
+        emit_mode,
         command,
     }))
 }
@@ -178,13 +261,37 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
 fn parse_demo_args(args: &[String]) -> Result<ParseOutcome, String> {
     let mut example_name = None;
     let mut list_examples = false;
+    let mut emit_mode = EmitMode::Raw;
+    let mut index = 0usize;
 
-    for arg in args {
+    while index < args.len() {
+        let arg = &args[index];
         match arg.as_str() {
             "-h" | "--help" => return Ok(ParseOutcome::Help),
-            "--list" => list_examples = true,
+            "--list" => {
+                list_examples = true;
+                index += 1;
+            }
+            "--emit" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| "missing value for --emit".to_string())?;
+                emit_mode = parse_emit_mode(value)?;
+                index += 2;
+            }
+            _ if arg.starts_with("--emit=") => {
+                let value = arg.trim_start_matches("--emit=");
+                if value.is_empty() {
+                    return Err("missing value for --emit".to_string());
+                }
+                emit_mode = parse_emit_mode(value)?;
+                index += 1;
+            }
             _ if arg.starts_with('-') => return Err(format!("unknown demo flag: {arg}")),
-            _ if example_name.is_none() => example_name = Some(arg.clone()),
+            _ if example_name.is_none() => {
+                example_name = Some(arg.clone());
+                index += 1;
+            }
             _ => return Err("demo accepts at most one example name".to_string()),
         }
     }
@@ -192,6 +299,7 @@ fn parse_demo_args(args: &[String]) -> Result<ParseOutcome, String> {
     Ok(ParseOutcome::Demo(DemoArgs {
         example_name,
         list_examples,
+        emit_mode,
     }))
 }
 
@@ -456,6 +564,232 @@ where
     Ok(())
 }
 
+fn current_timestamp_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn parse_trace_line(line: &str) -> ParsedLine {
+    if let Some((name, value)) = parse_aggregate_line(line) {
+        return ParsedLine::Aggregate { name, value };
+    }
+
+    if let Some(event) = parse_event_line(line) {
+        return ParsedLine::Event(event);
+    }
+
+    ParsedLine::Text
+}
+
+impl EventKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            EventKind::Execve => "execve",
+            EventKind::OpenAt => "openat",
+            EventKind::Write => "write",
+            EventKind::Connect => "connect",
+        }
+    }
+}
+
+fn parse_aggregate_line(line: &str) -> Option<(String, u64)> {
+    let trimmed = line.trim();
+    if !trimmed.starts_with('@') {
+        return None;
+    }
+
+    let (name, value) = trimmed[1..].split_once(':')?;
+    let value = value.trim().parse().ok()?;
+    Some((name.trim().to_string(), value))
+}
+
+fn parse_event_line(line: &str) -> Option<ParsedEvent> {
+    let mut parts = line.split_whitespace();
+    let kind = match parts.next()? {
+        "execve" => EventKind::Execve,
+        "openat" => EventKind::OpenAt,
+        "write" => EventKind::Write,
+        "connect" => EventKind::Connect,
+        _ => return None,
+    };
+
+    let mut comm = None;
+    let mut pid = None;
+    let mut file = None;
+    let mut bytes = None;
+    let mut fd = None;
+
+    for part in parts {
+        let (key, value) = match part.split_once('=') {
+            Some(pair) => pair,
+            None => continue,
+        };
+
+        match key {
+            "comm" => comm = Some(value.to_string()),
+            "pid" => pid = value.parse().ok(),
+            "file" => file = Some(value.to_string()),
+            "bytes" => bytes = value.parse().ok(),
+            "fd" => fd = value.parse().ok(),
+            _ => {}
+        }
+    }
+
+    Some(ParsedEvent {
+        kind,
+        comm: comm?,
+        pid: pid?,
+        file,
+        bytes,
+        fd,
+    })
+}
+
+fn stream_record_for_line(line: &str) -> Option<StreamRecord> {
+    match parse_trace_line(line) {
+        ParsedLine::Event(event) => Some(StreamRecord::Syscall {
+            timestamp_unix_ms: current_timestamp_millis(),
+            kind: event.kind.as_str(),
+            comm: event.comm,
+            pid: event.pid,
+            file: event.file,
+            bytes: event.bytes,
+            fd: event.fd,
+        }),
+        ParsedLine::Aggregate { name, value } => Some(StreamRecord::Aggregate {
+            timestamp_unix_ms: current_timestamp_millis(),
+            metric: name,
+            value,
+        }),
+        ParsedLine::Text => None,
+    }
+}
+
+fn append_log_line(log_file: &Arc<Mutex<File>>, line: &str) -> io::Result<()> {
+    let mut file = log_file
+        .lock()
+        .map_err(|_| io::Error::other("log file lock poisoned"))?;
+    file.write_all(line.as_bytes())?;
+    file.flush()?;
+    Ok(())
+}
+
+fn create_log_file(project_dir: &Path) -> Result<(Arc<Mutex<File>>, PathBuf), String> {
+    let logs_dir = project_dir.join("logs");
+    fs::create_dir_all(&logs_dir)
+        .map_err(|err| format!("failed to create logs dir {}: {err}", logs_dir.display()))?;
+
+    let timestamp = timestamp_for_filename();
+    let log_file_path = logs_dir.join(format!("ebpf-tracker-{timestamp}.log"));
+    let log_file = File::create(&log_file_path).map_err(|err| {
+        format!(
+            "failed to create log file {}: {err}",
+            log_file_path.display()
+        )
+    })?;
+
+    Ok((Arc::new(Mutex::new(log_file)), log_file_path))
+}
+
+fn copy_stream_jsonl<R: Read>(
+    reader: R,
+    log_file: Option<Arc<Mutex<File>>>,
+    terminal_lock: Arc<Mutex<()>>,
+) -> io::Result<()> {
+    let mut reader = BufReader::new(reader);
+    let mut line = String::new();
+
+    loop {
+        line.clear();
+        let read = reader.read_line(&mut line)?;
+        if read == 0 {
+            break;
+        }
+
+        if let Some(log_file) = &log_file {
+            append_log_line(log_file, &line)?;
+        }
+
+        let trimmed = line.trim_end_matches(['\n', '\r']);
+        if let Some(record) = stream_record_for_line(trimmed) {
+            let _terminal = terminal_lock
+                .lock()
+                .map_err(|_| io::Error::other("terminal lock poisoned"))?;
+            let mut stdout = io::stdout();
+            serde_json::to_writer(&mut stdout, &record)?;
+            stdout.write_all(b"\n")?;
+            stdout.flush()?;
+        } else {
+            let _terminal = terminal_lock
+                .lock()
+                .map_err(|_| io::Error::other("terminal lock poisoned"))?;
+            let mut stderr = io::stderr();
+            stderr.write_all(line.as_bytes())?;
+            stderr.flush()?;
+        }
+    }
+
+    Ok(())
+}
+
+fn run_with_jsonl(
+    mut command: Command,
+    project_dir: &Path,
+    log_enable: bool,
+) -> Result<i32, String> {
+    let mut child = command
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| format!("failed to run docker compose: {err}"))?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "failed to capture child stdout".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "failed to capture child stderr".to_string())?;
+
+    let log_file = if log_enable {
+        let (log_file, log_file_path) = create_log_file(project_dir)?;
+        eprintln!("logging enabled: {}", log_file_path.display());
+        Some(log_file)
+    } else {
+        None
+    };
+
+    let terminal_lock = Arc::new(Mutex::new(()));
+
+    let out_log = log_file.as_ref().map(Arc::clone);
+    let out_terminal = Arc::clone(&terminal_lock);
+    let out_handle = thread::spawn(move || copy_stream_jsonl(stdout, out_log, out_terminal));
+
+    let err_log = log_file.as_ref().map(Arc::clone);
+    let err_terminal = Arc::clone(&terminal_lock);
+    let err_handle = thread::spawn(move || copy_stream_jsonl(stderr, err_log, err_terminal));
+
+    let status = child
+        .wait()
+        .map_err(|err| format!("failed waiting for docker compose: {err}"))?;
+
+    let out_result = out_handle
+        .join()
+        .map_err(|_| "stdout capture thread panicked".to_string())?;
+    out_result.map_err(|err| format!("stdout capture failed: {err}"))?;
+
+    let err_result = err_handle
+        .join()
+        .map_err(|_| "stderr jsonl thread panicked".to_string())?;
+    err_result.map_err(|err| format!("stderr jsonl forwarding failed: {err}"))?;
+
+    Ok(exit_code(status))
+}
+
 fn exit_code(status: ExitStatus) -> i32 {
     if let Some(code) = status.code() {
         return code;
@@ -590,6 +924,7 @@ fn resolve_example_dir(repo_root: &Path, example_name: &str) -> Result<PathBuf, 
 fn clean_example(example_dir: &Path) -> Result<(), String> {
     let status = Command::new("cargo")
         .arg("clean")
+        .arg("--quiet")
         .arg("--target-dir")
         .arg("target")
         .current_dir(example_dir)
@@ -640,6 +975,7 @@ fn run_demo(demo_args: DemoArgs) -> Result<i32, String> {
             probe_file: None,
             config_path: Some(PathBuf::from(DEFAULT_CONFIG_FILE_NAME)),
             log_enable: false,
+            emit_mode: demo_args.emit_mode,
             command: vec!["cargo".to_string(), "run".to_string()],
         },
         example_dir,
@@ -651,7 +987,9 @@ fn run_cli(cli_args: CliArgs, project_dir: PathBuf) -> Result<i32, String> {
     let command =
         build_compose_command(&compose_file, &project_dir, &probe_file, &cli_args.command);
 
-    if cli_args.log_enable {
+    if cli_args.emit_mode == EmitMode::Jsonl {
+        run_with_jsonl(command, &project_dir, cli_args.log_enable)
+    } else if cli_args.log_enable {
         run_with_log(command, &project_dir)
     } else {
         run_without_log(command)
@@ -687,7 +1025,9 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_generated_probe, load_config};
+    use super::{
+        build_generated_probe, load_config, parse_event_line, stream_record_for_line, StreamRecord,
+    };
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -727,5 +1067,62 @@ mod tests {
         assert_eq!(config.probe.connect, Some(true));
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn parses_open_event_line() {
+        let parsed = parse_event_line("openat comm=session-io-demo pid=723 file=input/message.txt")
+            .expect("event line should parse");
+        assert_eq!(parsed.comm, "session-io-demo");
+        assert_eq!(parsed.pid, 723);
+        assert_eq!(parsed.file.as_deref(), Some("input/message.txt"));
+    }
+
+    #[test]
+    fn stream_record_serializes_syscall_fields() {
+        let record = stream_record_for_line("write comm=session-io-demo pid=723 bytes=239")
+            .expect("syscall should produce stream record");
+
+        match record {
+            StreamRecord::Syscall {
+                kind,
+                comm,
+                pid,
+                bytes,
+                file,
+                fd,
+                ..
+            } => {
+                assert_eq!(kind, "write");
+                assert_eq!(comm, "session-io-demo");
+                assert_eq!(pid, 723);
+                assert_eq!(bytes, Some(239));
+                assert_eq!(file, None);
+                assert_eq!(fd, None);
+            }
+            _ => panic!("expected syscall record"),
+        }
+    }
+
+    #[test]
+    fn stream_record_serializes_aggregate_fields() {
+        let record = stream_record_for_line("@writes: 5268")
+            .expect("aggregate should produce stream record");
+
+        match record {
+            StreamRecord::Aggregate { metric, value, .. } => {
+                assert_eq!(metric, "writes");
+                assert_eq!(value, 5268);
+            }
+            _ => panic!("expected aggregate record"),
+        }
+    }
+
+    #[test]
+    fn plain_text_does_not_enter_jsonl_stream() {
+        assert!(stream_record_for_line(
+            "Finished `dev` profile [unoptimized + debuginfo] target(s) in 1.04s"
+        )
+        .is_none());
     }
 }

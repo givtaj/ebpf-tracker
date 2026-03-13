@@ -81,6 +81,7 @@ Other common commands:
 eBPF_tracker cargo test
 eBPF_tracker cargo check
 eBPF_tracker --log-enable cargo run
+eBPF_tracker --emit jsonl cargo run
 ```
 
 Built-in probe by name:
@@ -94,6 +95,23 @@ Project-local probe file:
 ```bash
 eBPF_tracker --probe ./probes/custom.bt cargo run
 ```
+
+## Event Stream
+
+`eBPF_tracker` can reserve `stdout` for a machine-readable event stream:
+
+```bash
+eBPF_tracker --emit jsonl cargo run
+```
+
+In `jsonl` mode:
+
+- `stdout` emits newline-delimited JSON syscall and aggregate events
+- `stderr` keeps normal build output, app output, and runtime errors human-readable
+- without `--emit`, the default mode is `raw`
+
+That makes it easy to pipe the trace stream into another tool that renders a UI,
+stores the events, or applies custom filtering.
 
 ## Config
 
@@ -144,6 +162,12 @@ Run it with:
 
 ```bash
 cargo demo
+```
+
+Structured stream version:
+
+```bash
+cargo demo --emit jsonl session-io-demo
 ```
 
 ## Local Checks

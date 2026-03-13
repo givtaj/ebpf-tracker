@@ -27,6 +27,18 @@ cargo demo --list
 Under the hood, `cargo demo` is a Cargo alias that runs the Rust CLI's `demo`
 subcommand. The examples are designed to be launched from the repository root.
 
+For a tool-friendly event stream instead of human-oriented terminal output:
+
+```bash
+cargo demo --emit jsonl session-io-demo
+```
+
+In that mode, `stdout` is reserved for JSON Lines events, so another app can
+pipe, store, or render the trace stream while `stderr` still shows normal app
+and runtime output.
+
+Without `--emit`, the default mode is `raw`.
+
 ## What To Expect
 
 - the first run may build the Docker image
