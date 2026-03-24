@@ -1,7 +1,5 @@
-use std::collections::hash_map::DefaultHasher;
 use std::env;
 use std::fs::{self, File};
-use std::hash::{Hash, Hasher};
 use std::io::{self, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
@@ -14,20 +12,21 @@ use ebpf_tracker_perf::{
     default_perf_event_kinds, perf_trace_expression, stream_record_for_perf_trace_line,
     PerfTraceSession,
 };
+use runtime::{
+    configure_runtime_command, parse_runtime_selection, resolve_compose_file,
+    resolve_runtime_profile, write_if_changed, RuntimeProfile, RuntimeSelection,
+};
 use serde::Deserialize;
 
+mod runtime;
+
 const DEFAULT_PROBE: &str = "/probes/execve.bt";
-const COMPOSE_FILE_NAME: &str = "docker-compose.bpftrace.yml";
 const DEFAULT_CONFIG_FILE_NAME: &str = "ebpf-tracker.toml";
 const GENERATED_CONFIG_PROBE_FILE_NAME: &str = "generated-config.bt";
 const GENERATED_RUNTIME_OVERRIDE_FILE_NAME: &str = "generated-runtime.override.yml";
 const DEFAULT_EXAMPLE_NAME: &str = "session-io-demo";
 const EXAMPLES_DIR_NAME: &str = "examples";
-const CONTAINER_CARGO_TARGET_ROOT: &str = "/cargo-target";
-const EMBEDDED_COMPOSE: &str = include_str!("../docker-compose.bpftrace.yml");
-const EMBEDDED_DOCKERFILE: &str = include_str!("../docker/bpftrace-rust.Dockerfile");
-const EMBEDDED_RUN_SCRIPT: &str = include_str!("../scripts/run-bpftrace-wrap.sh");
-const EMBEDDED_PROBE_EXECVE: &str = include_str!("../probes/execve.bt");
+const DEMO_MANIFEST_FILE_NAME: &str = "ebpf-demo.toml";
 const GENERATED_EXEC_PROBE: &str = r#"tracepoint:syscalls:sys_enter_execve
 /comm != "bpftrace"/
 {
@@ -63,6 +62,7 @@ struct CliArgs {
     log_enable: bool,
     emit_mode: EmitMode,
     transport_mode: TransportMode,
+    runtime_selection: RuntimeSelection,
     command: Vec<String>,
 }
 
@@ -72,6 +72,13 @@ struct DemoArgs {
     list_examples: bool,
     emit_mode: EmitMode,
     transport_mode: TransportMode,
+}
+
+#[derive(Debug)]
+struct DemoManifest {
+    runtime_selection: RuntimeSelection,
+    command: Vec<String>,
+    clean_command: Option<Vec<String>>,
 }
 
 enum ParseOutcome {
@@ -104,6 +111,13 @@ struct RuntimeConfig {
     pids_limit: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+struct DemoManifestFile {
+    runtime: String,
+    command: Vec<String>,
+    clean: Option<Vec<String>>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum EmitMode {
     Raw,
@@ -127,18 +141,21 @@ impl TransportMode {
 
 fn print_usage() {
     eprintln!(
-        "Usage: eBPF_tracker [--probe <file-or-name>] [--config <path>] [--log-enable] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] <command> [args...]"
+        "Usage: eBPF_tracker [--probe <file-or-name>] [--config <path>] [--log-enable] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--runtime <auto|rust|node>] <command> [args...]"
     );
     eprintln!("Usage: eBPF_tracker demo [--list] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [example-name]");
     eprintln!("Default emit mode: raw");
     eprintln!("Default transport: bpftrace");
+    eprintln!("Default runtime: auto");
     eprintln!("Example: eBPF_tracker cargo run");
+    eprintln!("Example: eBPF_tracker npm test");
     eprintln!("Example: eBPF_tracker --config ebpf-tracker.toml cargo run");
     eprintln!("Example: eBPF_tracker --probe execve.bt cargo run");
     eprintln!("Example: eBPF_tracker --probe ./probes/custom.bt cargo run");
     eprintln!("Example: eBPF_tracker --log-enable cargo test");
     eprintln!("Example: eBPF_tracker --emit jsonl cargo run");
     eprintln!("Example: eBPF_tracker --transport perf --emit jsonl cargo run");
+    eprintln!("Example: eBPF_tracker --runtime node /bin/sh -lc \"npm run dev\"");
     eprintln!("Repository demo mode: eBPF_tracker demo --list");
     eprintln!("Repository demo example: eBPF_tracker demo --emit jsonl session-io-demo");
     eprintln!("The demo subcommand expects a local clone of cargo-ebpf-tracker.");
@@ -180,6 +197,7 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
     let mut log_enable = false;
     let mut emit_mode = EmitMode::Raw;
     let mut transport_mode = TransportMode::Bpftrace;
+    let mut runtime_selection = RuntimeSelection::Auto;
     let mut index = 0usize;
 
     while index < args.len() {
@@ -215,6 +233,13 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
                     .get(index + 1)
                     .ok_or_else(|| "missing value for --transport".to_string())?;
                 transport_mode = parse_transport_mode(value)?;
+                index += 2;
+            }
+            "--runtime" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| "missing value for --runtime".to_string())?;
+                runtime_selection = parse_runtime_selection(value)?;
                 index += 2;
             }
             "-h" | "--help" => return Ok(ParseOutcome::Help),
@@ -254,6 +279,14 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
                 transport_mode = parse_transport_mode(value)?;
                 index += 1;
             }
+            _ if arg.starts_with("--runtime=") => {
+                let value = arg.trim_start_matches("--runtime=");
+                if value.is_empty() {
+                    return Err("missing value for --runtime".to_string());
+                }
+                runtime_selection = parse_runtime_selection(value)?;
+                index += 1;
+            }
             _ => break,
         }
     }
@@ -269,6 +302,7 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
         log_enable,
         emit_mode,
         transport_mode,
+        runtime_selection,
         command,
     }))
 }
@@ -333,109 +367,6 @@ fn parse_demo_args(args: &[String]) -> Result<ParseOutcome, String> {
         emit_mode,
         transport_mode,
     }))
-}
-
-fn cache_root_candidates() -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-
-    if let Ok(path) = env::var("EBPF_TRACKER_CACHE_DIR") {
-        roots.push(PathBuf::from(path));
-        return roots;
-    }
-
-    if let Ok(path) = env::var("XDG_CACHE_HOME") {
-        roots.push(PathBuf::from(path).join("ebpf-tracker"));
-    }
-
-    if let Ok(path) = env::var("HOME") {
-        roots.push(PathBuf::from(path).join(".cache").join("ebpf-tracker"));
-    }
-
-    roots.push(env::temp_dir().join("ebpf-tracker"));
-    roots
-}
-
-fn write_if_changed(path: &Path, content: &str) -> Result<(), String> {
-    if path.exists() {
-        let existing = fs::read_to_string(path)
-            .map_err(|err| format!("failed to read {}: {err}", path.display()))?;
-        if existing == content {
-            return Ok(());
-        }
-    }
-
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|err| format!("failed to create {}: {err}", parent.display()))?;
-    }
-
-    fs::write(path, content).map_err(|err| format!("failed to write {}: {err}", path.display()))?;
-    Ok(())
-}
-
-fn ensure_embedded_runtime() -> Result<PathBuf, String> {
-    let mut errors = Vec::new();
-
-    for root in cache_root_candidates() {
-        let runtime_dir = root.join(format!("runtime-v{}", env!("CARGO_PKG_VERSION")));
-        let result = (|| -> Result<PathBuf, String> {
-            write_if_changed(
-                &runtime_dir.join("docker-compose.bpftrace.yml"),
-                EMBEDDED_COMPOSE,
-            )?;
-            write_if_changed(
-                &runtime_dir.join("docker/bpftrace-rust.Dockerfile"),
-                EMBEDDED_DOCKERFILE,
-            )?;
-            write_if_changed(
-                &runtime_dir.join("scripts/run-bpftrace-wrap.sh"),
-                EMBEDDED_RUN_SCRIPT,
-            )?;
-            write_if_changed(&runtime_dir.join("probes/execve.bt"), EMBEDDED_PROBE_EXECVE)?;
-            Ok(runtime_dir.join(COMPOSE_FILE_NAME))
-        })();
-
-        match result {
-            Ok(compose_file) => return Ok(compose_file),
-            Err(err) => errors.push(err),
-        }
-    }
-
-    Err(format!(
-        "failed to materialize runtime assets: {}",
-        errors.join("; ")
-    ))
-}
-
-fn resolve_compose_file() -> Result<PathBuf, String> {
-    if let Ok(path) = env::var("EBPF_TRACKER_COMPOSE_FILE") {
-        let compose = PathBuf::from(path);
-        if compose.is_file() {
-            return Ok(compose);
-        }
-        return Err(format!(
-            "compose file from EBPF_TRACKER_COMPOSE_FILE not found: {}",
-            compose.display()
-        ));
-    }
-
-    let current_dir =
-        env::current_dir().map_err(|err| format!("failed to read current dir: {err}"))?;
-    let cwd_candidate = current_dir.join(COMPOSE_FILE_NAME);
-    if cwd_candidate.is_file() {
-        return Ok(cwd_candidate);
-    }
-
-    let exe =
-        env::current_exe().map_err(|err| format!("failed to resolve executable path: {err}"))?;
-    for ancestor in exe.ancestors() {
-        let candidate = ancestor.join(COMPOSE_FILE_NAME);
-        if candidate.is_file() {
-            return Ok(candidate);
-        }
-    }
-
-    ensure_embedded_runtime()
 }
 
 fn resolve_config_path(
@@ -672,6 +603,7 @@ fn build_compose_command(
     compose_file: &Path,
     runtime_override_file: Option<&Path>,
     project_dir: &Path,
+    runtime_profile: RuntimeProfile,
     cli_args: &CliArgs,
     probe_file: Option<&str>,
     perf_events: Option<&str>,
@@ -690,10 +622,7 @@ fn build_compose_command(
         "EBPF_TRACKER_TRANSPORT={}",
         cli_args.transport_mode.as_str()
     ));
-    command.arg("-e").arg(format!(
-        "CARGO_TARGET_DIR={}",
-        container_cargo_target_dir(project_dir)
-    ));
+    configure_runtime_command(&mut command, project_dir, runtime_profile);
 
     if let Some(probe_file) = probe_file {
         command
@@ -713,12 +642,6 @@ fn build_compose_command(
         .env("PROJECT_DIR", project_dir);
 
     command
-}
-
-fn container_cargo_target_dir(project_dir: &Path) -> String {
-    let mut hasher = DefaultHasher::new();
-    project_dir.to_string_lossy().hash(&mut hasher);
-    format!("{CONTAINER_CARGO_TARGET_ROOT}/{:016x}", hasher.finish())
 }
 
 fn timestamp_for_filename() -> String {
@@ -1071,6 +994,42 @@ fn repo_root_from(start_dir: &Path) -> Result<PathBuf, String> {
     Err("demo mode must be run from the repository root or one of its subdirectories".to_string())
 }
 
+fn demo_manifest_path(example_dir: &Path) -> PathBuf {
+    example_dir.join(DEMO_MANIFEST_FILE_NAME)
+}
+
+fn load_demo_manifest(example_dir: &Path) -> Result<DemoManifest, String> {
+    let manifest_path = demo_manifest_path(example_dir);
+    let content = fs::read_to_string(&manifest_path)
+        .map_err(|err| format!("failed to read {}: {err}", manifest_path.display()))?;
+    let parsed: DemoManifestFile = toml::from_str(&content)
+        .map_err(|err| format!("failed to parse {}: {err}", manifest_path.display()))?;
+
+    if parsed.command.is_empty() {
+        return Err(format!(
+            "{} must define a non-empty command",
+            manifest_path.display()
+        ));
+    }
+
+    if parsed
+        .clean
+        .as_ref()
+        .is_some_and(|command| command.is_empty())
+    {
+        return Err(format!(
+            "{} must not define an empty clean command",
+            manifest_path.display()
+        ));
+    }
+
+    Ok(DemoManifest {
+        runtime_selection: parse_runtime_selection(&parsed.runtime)?,
+        command: parsed.command,
+        clean_command: parsed.clean,
+    })
+}
+
 fn available_examples(repo_root: &Path) -> Result<Vec<String>, String> {
     let mut examples = Vec::new();
     let examples_dir = repo_root.join(EXAMPLES_DIR_NAME);
@@ -1081,7 +1040,7 @@ fn available_examples(repo_root: &Path) -> Result<Vec<String>, String> {
         let entry =
             entry.map_err(|err| format!("failed to read {}: {err}", examples_dir.display()))?;
         let path = entry.path();
-        if path.is_dir() && path.join("Cargo.toml").is_file() {
+        if path.is_dir() && demo_manifest_path(&path).is_file() {
             examples.push(entry.file_name().to_string_lossy().to_string());
         }
     }
@@ -1092,7 +1051,7 @@ fn available_examples(repo_root: &Path) -> Result<Vec<String>, String> {
 
 fn resolve_example_dir(repo_root: &Path, example_name: &str) -> Result<PathBuf, String> {
     let example_dir = repo_root.join(EXAMPLES_DIR_NAME).join(example_name);
-    if example_dir.join("Cargo.toml").is_file() {
+    if demo_manifest_path(&example_dir).is_file() {
         Ok(example_dir)
     } else {
         let examples = available_examples(repo_root)?;
@@ -1107,12 +1066,16 @@ fn resolve_example_dir(repo_root: &Path, example_name: &str) -> Result<PathBuf, 
     }
 }
 
-fn clean_example(example_dir: &Path) -> Result<(), String> {
-    let status = Command::new("cargo")
-        .arg("clean")
-        .arg("--quiet")
-        .arg("--target-dir")
-        .arg("target")
+fn clean_example(example_dir: &Path, clean_command: Option<&[String]>) -> Result<(), String> {
+    let Some(clean_command) = clean_command else {
+        return Ok(());
+    };
+    let Some(program) = clean_command.first() else {
+        return Ok(());
+    };
+
+    let status = Command::new(program)
+        .args(&clean_command[1..])
         .current_dir(example_dir)
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
@@ -1120,7 +1083,7 @@ fn clean_example(example_dir: &Path) -> Result<(), String> {
         .status()
         .map_err(|err| {
             format!(
-                "failed to run cargo clean in {}: {err}",
+                "failed to run clean command in {}: {err}",
                 example_dir.display()
             )
         })?;
@@ -1129,7 +1092,7 @@ fn clean_example(example_dir: &Path) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "cargo clean failed in {} with exit code {}",
+            "clean command failed in {} with exit code {}",
             example_dir.display(),
             exit_code(status)
         ))
@@ -1152,9 +1115,10 @@ fn run_demo(demo_args: DemoArgs) -> Result<i32, String> {
         .example_name
         .unwrap_or_else(|| DEFAULT_EXAMPLE_NAME.to_string());
     let example_dir = resolve_example_dir(&repo_root, &example_name)?;
+    let manifest = load_demo_manifest(&example_dir)?;
 
     eprintln!("Running example: {example_name}");
-    clean_example(&example_dir)?;
+    clean_example(&example_dir, manifest.clean_command.as_deref())?;
 
     run_cli(
         CliArgs {
@@ -1163,15 +1127,17 @@ fn run_demo(demo_args: DemoArgs) -> Result<i32, String> {
             log_enable: false,
             emit_mode: demo_args.emit_mode,
             transport_mode: demo_args.transport_mode,
-            command: vec!["cargo".to_string(), "run".to_string()],
+            runtime_selection: manifest.runtime_selection,
+            command: manifest.command,
         },
         example_dir,
     )
 }
 
 fn run_cli(cli_args: CliArgs, project_dir: PathBuf) -> Result<i32, String> {
+    let runtime_profile = resolve_runtime_profile(cli_args.runtime_selection, &cli_args.command);
     let config = resolve_tracker_config(cli_args.config_path.as_deref(), &project_dir)?;
-    let compose_file = resolve_compose_file()?;
+    let compose_file = resolve_compose_file(runtime_profile)?;
     let runtime_override = resolve_runtime_override(config.as_ref(), &compose_file)?;
     let (probe_file, perf_events) = match cli_args.transport_mode {
         TransportMode::Bpftrace => (
@@ -1188,6 +1154,7 @@ fn run_cli(cli_args: CliArgs, project_dir: PathBuf) -> Result<i32, String> {
         &compose_file,
         runtime_override.as_deref(),
         &project_dir,
+        runtime_profile,
         &cli_args,
         probe_file.as_deref(),
         perf_events.as_deref(),
@@ -1238,9 +1205,10 @@ pub fn main_entry() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_generated_probe, build_runtime_override, container_cargo_target_dir, load_config,
-        stream_record_for_bytes, RuntimeConfig, TransportMode,
+        build_generated_probe, build_runtime_override, load_config, load_demo_manifest, parse_args,
+        stream_record_for_bytes, ParseOutcome, RuntimeConfig, TransportMode,
     };
+    use crate::runtime::RuntimeSelection;
     use ebpf_tracker_events::StreamRecord;
     use std::fs;
     use std::path::Path;
@@ -1361,21 +1329,83 @@ mod tests {
     }
 
     #[test]
-    fn container_target_dir_is_stable_for_a_project() {
-        let project_dir = Path::new("/tmp/payment-engine");
-        let first = container_cargo_target_dir(project_dir);
-        let second = container_cargo_target_dir(project_dir);
+    fn demo_manifest_parses_runtime_and_command() {
+        let temp_dir = unique_temp_dir("ebpf-demo-manifest");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be created");
+        fs::write(
+            temp_dir.join("ebpf-demo.toml"),
+            "runtime = \"node\"\ncommand = [\"npm\", \"run\", \"generate\"]\n",
+        )
+        .expect("manifest should be written");
 
-        assert_eq!(first, second);
-        assert!(first.starts_with("/cargo-target/"));
+        let manifest = load_demo_manifest(&temp_dir).expect("manifest should load");
+        assert_eq!(manifest.runtime_selection, RuntimeSelection::Node);
+        assert_eq!(
+            manifest.command,
+            vec!["npm".to_string(), "run".to_string(), "generate".to_string()]
+        );
+        assert!(manifest.clean_command.is_none());
+
+        let _ = fs::remove_dir_all(temp_dir);
     }
 
     #[test]
-    fn container_target_dir_differs_between_projects() {
-        let first = container_cargo_target_dir(Path::new("/tmp/payment-engine"));
-        let second = container_cargo_target_dir(Path::new("/tmp/session-io-demo"));
+    fn demo_manifest_rejects_empty_command() {
+        let temp_dir = unique_temp_dir("ebpf-demo-empty-command");
+        fs::create_dir_all(&temp_dir).expect("temp dir should be created");
+        fs::write(
+            temp_dir.join("ebpf-demo.toml"),
+            "runtime = \"rust\"\ncommand = []\n",
+        )
+        .expect("manifest should be written");
 
-        assert_ne!(first, second);
+        let error = load_demo_manifest(&temp_dir).expect_err("manifest should fail");
+        assert!(error.contains("non-empty command"));
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn cli_args_parse_runtime_selection_before_command() {
+        let parsed = parse_args(vec![
+            "--runtime".to_string(),
+            "node".to_string(),
+            "npm".to_string(),
+            "test".to_string(),
+        ])
+        .expect("args should parse");
+
+        match parsed {
+            ParseOutcome::Run(cli_args) => {
+                assert_eq!(cli_args.runtime_selection, RuntimeSelection::Node);
+                assert_eq!(
+                    cli_args.command,
+                    vec!["npm".to_string(), "test".to_string()]
+                );
+            }
+            _ => panic!("expected run outcome"),
+        }
+    }
+
+    #[test]
+    fn cli_args_parse_runtime_selection_equals_form() {
+        let parsed = parse_args(vec![
+            "--runtime=node".to_string(),
+            "node".to_string(),
+            "script.js".to_string(),
+        ])
+        .expect("args should parse");
+
+        match parsed {
+            ParseOutcome::Run(cli_args) => {
+                assert_eq!(cli_args.runtime_selection, RuntimeSelection::Node);
+                assert_eq!(
+                    cli_args.command,
+                    vec!["node".to_string(), "script.js".to_string()]
+                );
+            }
+            _ => panic!("expected run outcome"),
+        }
     }
 
     #[test]
@@ -1402,5 +1432,13 @@ mod tests {
             }
             _ => panic!("expected syscall record"),
         }
+    }
+
+    fn unique_temp_dir(prefix: &str) -> std::path::PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time should be monotonic")
+            .as_nanos();
+        Path::new("/tmp").join(format!("{prefix}-{unique}"))
     }
 }

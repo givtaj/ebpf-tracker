@@ -1,0 +1,15 @@
+services:
+  bpftrace:
+    build:
+      context: .
+      dockerfile: docker/bpftrace-node.Dockerfile
+    privileged: true
+    pid: host
+    working_dir: /workspace
+    volumes:
+      - ${PROJECT_DIR:?set PROJECT_DIR}:/workspace
+      - npm-cache:/npm-cache
+      - ./probes:/probes:ro
+
+volumes:
+  npm-cache:

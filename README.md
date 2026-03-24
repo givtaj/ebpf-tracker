@@ -1,6 +1,8 @@
 # eBPF_tracker
 
-`eBPF_tracker` is a Rust CLI that wraps a command like `cargo run`, starts a Linux runtime with Docker, and attaches `bpftrace` for the lifetime of that command.
+`eBPF_tracker` is a CLI that wraps commands like `cargo run` or `npm test`,
+starts a Linux runtime with Docker, and attaches `bpftrace` for the lifetime of
+that command.
 The public GitHub repo is `cargo-ebpf-tracker`:
 [cargo-ebpf-tracker](https://github.com/givtaj/cargo-ebpf-tracker)
 
@@ -8,6 +10,7 @@ The public GitHub repo is `cargo-ebpf-tracker`:
 
 - Installable as a Cargo binary.
 - Runs the wrapped command inside a privileged Docker Linux runtime.
+- Supports separate Rust and Node runtime images.
 - Uses `bpftrace` by default and now supports a `perf trace` transport.
 - Default built-in probe is `execve.bt`.
 - Supports config-driven generated probes for `exec`, `write`, `open`, and `connect`.
@@ -22,6 +25,15 @@ eBPF_tracker cargo run
 ```
 
 you are tracing the full wrapped command session. That means you will often see `cargo`, `rustc`, linkers, and then your app. This is current behavior, not a bug.
+
+When you run:
+
+```bash
+eBPF_tracker npm test
+```
+
+you are tracing the full wrapped Node session. That usually includes `npm`,
+`node`, package scripts, and any subprocesses they spawn.
 
 ## Why A Customer Cares
 
@@ -39,13 +51,14 @@ For v0.1, the product contract is:
 
 - install with Cargo
 - run `eBPF_tracker cargo run` from a Rust project
+- run `eBPF_tracker npm test` from a Node project
 - execute that command inside a Docker-backed Linux runtime
 - attach `bpftrace` for the lifetime of the wrapped command
 - show useful kernel-level events for that command session
 
 ## Requirements
 
-- Rust toolchain
+- Rust toolchain to build or install `eBPF_tracker`
 - Docker Desktop or another Docker engine that supports privileged containers
 
 ## Install
@@ -67,6 +80,7 @@ After install:
 ```bash
 eBPF_tracker --help
 eBPF_tracker cargo run
+eBPF_tracker npm test
 ```
 
 That installs the `eBPF_tracker` binary only.
@@ -91,14 +105,24 @@ Run without installing:
 cargo run --bin eBPF_tracker -- cargo run
 ```
 
+Runtime selection is modular:
+
+- Rust commands use a Rust runtime image
+- Node commands such as `node`, `npm`, `npx`, `pnpm`, and `yarn` use a Node runtime image
+- `--runtime rust` or `--runtime node` overrides auto-detection when the wrapped command goes through a shell
+- Node support uses a dedicated Node image, not `nvm` inside the tracing container
+
 Other common commands:
 
 ```bash
 eBPF_tracker cargo test
 eBPF_tracker cargo check
+eBPF_tracker npm install
+eBPF_tracker npm test
 eBPF_tracker --log-enable cargo run
 eBPF_tracker --emit jsonl cargo run
 eBPF_tracker --transport perf cargo run
+eBPF_tracker --runtime node /bin/sh -lc "npm run dev"
 ```
 
 Built-in probe by name:

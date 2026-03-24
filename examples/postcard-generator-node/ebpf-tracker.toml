@@ -1,0 +1,5 @@
+[probe]
+exec = true
+write = true
+open = true
+connect = true

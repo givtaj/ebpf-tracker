@@ -1,0 +1,3 @@
+runtime = "rust"
+command = ["cargo", "run"]
+clean = ["cargo", "clean", "--quiet", "--target-dir", "target"]

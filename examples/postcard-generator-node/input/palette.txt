@@ -1,0 +1,5 @@
+paper=#f8f2e7
+ink=#19324a
+accent=#da5a3f
+stamp=#2c7a7b
+shadow=#d8cdbd

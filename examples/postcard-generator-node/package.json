@@ -1,0 +1,8 @@
+{
+  "name": "postcard-generator-node",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "generate": "node src/generate.js"
+  }
+}

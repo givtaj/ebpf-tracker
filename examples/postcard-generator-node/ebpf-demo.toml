@@ -1,0 +1,2 @@
+runtime = "node"
+command = ["npm", "run", "generate"]

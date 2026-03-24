@@ -3,11 +3,11 @@ name = "ebpf-tracker"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Rust CLI that wraps Cargo commands, runs them inside a Linux Docker runtime, and attaches bpftrace for session-based eBPF observability."
+description = "CLI that wraps Rust or Node commands, runs them inside a Linux Docker runtime, and attaches bpftrace for session-based eBPF observability."
 readme = "README.md"
 repository.workspace = true
 homepage.workspace = true
-keywords = ["cargo", "ebpf", "bpftrace", "observability", "rust"]
+keywords = ["cargo", "node", "ebpf", "bpftrace", "observability"]
 categories = ["command-line-utilities", "development-tools"]
 
 [workspace]
@@ -17,6 +17,7 @@ members = [
     "crates/ebpf-tracker-otel",
     "crates/ebpf-tracker-perf",
     "examples/session-io-demo",
+    "examples/postcard-generator-rust",
 ]
 resolver = "2"
 

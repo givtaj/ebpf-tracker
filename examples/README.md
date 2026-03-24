@@ -78,3 +78,7 @@ cargo demo --emit jsonl session-io-demo | cargo otel --target jaeger --service-n
 
 - [session-io-demo](./session-io-demo/README.md): demonstrates build-time file
   generation plus runtime file, network, and output activity in one trace
+- [postcard-generator-rust](./postcard-generator-rust/README.md): generates a
+  visible postcard with Rust and writes HTML, SVG, and JSON artifacts
+- [postcard-generator-node](./postcard-generator-node/README.md): mirrors the
+  same visible postcard workflow in Node.js

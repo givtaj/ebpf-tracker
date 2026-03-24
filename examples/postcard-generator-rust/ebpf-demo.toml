@@ -1,0 +1,2 @@
+runtime = "rust"
+command = ["cargo", "run", "--quiet"]
