@@ -60,6 +60,7 @@ For v0.1, the product contract is:
 
 - Rust toolchain to build or install `eBPF_tracker`
 - Docker Desktop or another Docker engine that supports privileged containers
+- Node.js on the host if you want to use the repo-local live dashboard
 
 ## Install
 
@@ -124,6 +125,18 @@ eBPF_tracker --emit jsonl cargo run
 eBPF_tracker --transport perf cargo run
 eBPF_tracker --runtime node /bin/sh -lc "npm run dev"
 ```
+
+Live dashboard from a local clone:
+
+```bash
+./target/debug/eBPF_tracker --dashboard cargo run
+./target/debug/eBPF_tracker --dashboard npm test
+./target/debug/eBPF_tracker demo --dashboard session-io-demo
+```
+
+`--dashboard` launches the repo-local viewer in your browser and forces the
+tracker stream to `--emit jsonl` for that run. Use `--dashboard-port 43116` if
+you need a different local port.
 
 Built-in probe by name:
 
@@ -275,6 +288,17 @@ Run it from the repository root with:
 ```bash
 cargo demo
 ```
+
+Dashboard version from a fresh clone:
+
+```bash
+git clone https://github.com/givtaj/cargo-ebpf-tracker
+cd cargo-ebpf-tracker
+cargo build --bin eBPF_tracker
+./target/debug/eBPF_tracker demo --dashboard session-io-demo
+```
+
+That starts the demo trace and opens the live dashboard automatically.
 
 Structured stream version:
 

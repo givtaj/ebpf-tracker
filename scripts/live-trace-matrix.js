@@ -111,22 +111,60 @@ function parseArgs(args) {
     };
   }
 
-  const finalCommand = command.length ? command : DEFAULT_TARGET.slice();
-  if (!finalCommand.includes("--emit")) {
-    if (finalCommand[0] === "./target/debug/eBPF_tracker" || finalCommand[0].endsWith("/eBPF_tracker")) {
-      finalCommand.splice(1, 0, "--emit", "jsonl");
-    } else if (finalCommand[0] === "demo") {
-      finalCommand.splice(1, 0, "--emit", "jsonl");
-      finalCommand.unshift("./target/debug/eBPF_tracker");
-    } else {
-      finalCommand.unshift("--emit", "jsonl");
-      finalCommand.unshift("./target/debug/eBPF_tracker");
-    }
-  } else if (finalCommand[0] !== "./target/debug/eBPF_tracker" && !finalCommand[0].endsWith("/eBPF_tracker")) {
-    finalCommand.unshift("./target/debug/eBPF_tracker");
-  }
+  const finalCommand = ensureViewerCommand(command);
 
   return { port, host, command: finalCommand, replayFile: null, focusComm: null, replaySpeed: 1, replayIntervalMs: null };
+}
+
+function ensureViewerCommand(command) {
+  const finalCommand = command.length ? command.slice() : DEFAULT_TARGET.slice();
+
+  if (isTrackerBinary(finalCommand[0])) {
+    return [finalCommand[0], ...ensureTrackerArgsJsonl(finalCommand.slice(1))];
+  }
+
+  if (finalCommand[0] === "demo") {
+    return [DEFAULT_TARGET[0], ...ensureTrackerArgsJsonl(finalCommand)];
+  }
+
+  return [DEFAULT_TARGET[0], ...ensureTrackerArgsJsonl(finalCommand)];
+}
+
+function ensureTrackerArgsJsonl(args) {
+  if (!args.length) {
+    return ["--emit", "jsonl"];
+  }
+
+  if (args[0] === "demo") {
+    return ["demo", ...replaceEmitWithJsonl(args.slice(1))];
+  }
+
+  return replaceEmitWithJsonl(args);
+}
+
+function replaceEmitWithJsonl(args) {
+  const filtered = [];
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--emit") {
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--emit=")) {
+      continue;
+    }
+    filtered.push(arg);
+  }
+
+  return ["--emit", "jsonl", ...filtered];
+}
+
+function isTrackerBinary(program) {
+  if (!program) {
+    return false;
+  }
+  return program === "eBPF_tracker" || program === "./target/debug/eBPF_tracker" || program.endsWith("/eBPF_tracker");
 }
 
 function createState() {
@@ -1605,91 +1643,353 @@ function renderHtml() {
 
       function renderTraceMap(snapshot) {
         const primary = pickPrimaryProcess(snapshot);
-        const fileNodes = (snapshot.topFiles || []).slice(0, 3);
-        const outputNodes = [];
+        const width = 860;
+        const height = 430;
+        const shellX = 20;
+        const shellY = 18;
+        const shellWidth = 820;
+        const shellHeight = 394;
+        const centerX = 430;
+        const centerY = 176;
+        const centerWidth = 216;
+        const centerHeight = 136;
+        const leftX = 232;
+        const rightX = 628;
+        const inputs = buildSessionInputNodes(snapshot).slice(0, 4);
+        const outputs = buildSessionOutputNodes(snapshot, primary).slice(0, 4);
+        const journey = buildSessionJourney(snapshot, primary).slice(0, 4);
+        const centerStats = summarizePrimaryStats(snapshot, primary);
 
-        if ((snapshot.counters.connect || 0) > 0) {
-          outputNodes.push({ label: "network", detail: formatNumber(snapshot.counters.connect) + " connect", color: "#72b6ff" });
-        }
-        if ((snapshot.counters.write || 0) > 0) {
-          outputNodes.push({ label: "writes", detail: formatBytes(snapshot.counters.bytes || 0), color: "#ff5f7a" });
-        }
-
-        const otherProcesses = (snapshot.topProcesses || [])
-          .filter((entry) => entry.comm !== primary)
-          .slice(0, 2);
-        for (const entry of otherProcesses) {
-          outputNodes.push({ label: entry.comm, detail: formatNumber(entry.count) + " events", color: "#ffd84d" });
-        }
-
-        if (!fileNodes.length && !outputNodes.length) {
-          return '<svg viewBox="0 0 860 320" role="img" aria-label="Empty session map">' +
-            '<rect width="860" height="320" fill="rgba(0,0,0,0.18)"></rect>' +
-            '<text x="430" y="164" text-anchor="middle" fill="rgba(165,255,180,0.68)" font-size="18" font-family="IBM Plex Mono, monospace">No trace relationships yet.</text>' +
+        if (!inputs.length && !outputs.length && !journey.length) {
+          return '<svg viewBox="0 0 860 430" role="img" aria-label="Empty session map">' +
+            '<rect width="860" height="430" fill="rgba(0,0,0,0.18)"></rect>' +
+            '<text x="430" y="214" text-anchor="middle" fill="rgba(165,255,180,0.68)" font-size="18" font-family="IBM Plex Mono, monospace">No trace relationships yet.</text>' +
           '</svg>';
         }
 
-        const width = 860;
-        const height = 320;
-        const centerX = 430;
-        const centerY = 160;
-        const leftX = 150;
-        const rightX = 710;
-
-        const leftNodes = fileNodes.map((entry, index) => ({
+        const leftNodes = inputs.map((entry, index) => ({
+          ...entry,
           x: leftX,
-          y: 88 + index * 78,
-          title: shortPath(entry.file),
-          detail: formatNumber(entry.count) + " open_at",
-          color: "#7bffb9"
+          y: 104 + index * 72,
+          anchor: "end"
         }));
 
-        const rightNodes = outputNodes.map((entry, index) => ({
+        const rightNodes = outputs.map((entry, index) => ({
+          ...entry,
           x: rightX,
-          y: 88 + index * 78,
-          title: entry.label,
-          detail: entry.detail,
-          color: entry.color
+          y: 104 + index * 72,
+          anchor: "start"
         }));
 
-        const leftEdges = leftNodes.map((node) => {
-          return '<path d="M ' + (node.x + 90) + ' ' + node.y + ' C 270 ' + node.y + ', 320 160, 358 160" fill="none" stroke="' + node.color + '" stroke-opacity="0.46" stroke-width="3"></path>';
-        }).join("");
+        const leftEdges = leftNodes.map((node, index) =>
+          renderSessionEdge({
+            fromX: node.x,
+            fromY: node.y,
+            toX: centerX - centerWidth / 2,
+            toY: centerY - 28 + index * 10,
+            color: node.color,
+            label: node.edgeLabel
+          })
+        ).join("");
 
-        const rightEdges = rightNodes.map((node) => {
-          return '<path d="M 502 160 C 560 160, 590 ' + node.y + ', ' + (node.x - 90) + ' ' + node.y + '" fill="none" stroke="' + node.color + '" stroke-opacity="0.46" stroke-width="3"></path>';
-        }).join("");
+        const rightEdges = rightNodes.map((node, index) =>
+          renderSessionEdge({
+            fromX: centerX + centerWidth / 2,
+            fromY: centerY - 16 + index * 12,
+            toX: node.x,
+            toY: node.y,
+            color: node.color,
+            label: node.edgeLabel
+          })
+        ).join("");
 
-        const leftBoxes = leftNodes.map((node) => renderMapNode(node.x, node.y, node.title, node.detail, node.color, "end")).join("");
-        const rightBoxes = rightNodes.map((node) => renderMapNode(node.x, node.y, node.title, node.detail, node.color, "start")).join("");
+        const leftBoxes = leftNodes.map((node) => renderMapNode(node)).join("");
+        const rightBoxes = rightNodes.map((node) => renderMapNode(node)).join("");
+        const statChips = renderCenterStatChips(centerX, centerY + 18, centerStats);
+        const journeyStrip = journey.length
+          ? renderJourneyStrip(journey, width, 318)
+          : '<text x="430" y="348" text-anchor="middle" fill="rgba(165,255,180,0.58)" font-size="12" font-family="IBM Plex Mono, monospace">No recent flow cues yet.</text>';
 
         return '<svg viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-label="Session map">' +
           '<rect width="' + width + '" height="' + height + '" fill="rgba(0,0,0,0.14)"></rect>' +
-          '<text x="30" y="30" fill="rgba(165,255,180,0.68)" font-size="12" font-family="IBM Plex Mono, monospace">inputs</text>' +
-          '<text x="' + (width - 30) + '" y="30" text-anchor="end" fill="rgba(165,255,180,0.68)" font-size="12" font-family="IBM Plex Mono, monospace">outputs</text>' +
+          '<rect x="' + shellX + '" y="' + shellY + '" width="' + shellWidth + '" height="' + shellHeight + '" rx="36" fill="rgba(4,10,16,0.62)" stroke="rgba(60,255,20,0.22)" stroke-width="2"></rect>' +
+          '<text x="44" y="42" fill="rgba(165,255,180,0.72)" font-size="12" font-family="IBM Plex Mono, monospace">inputs</text>' +
+          '<text x="430" y="42" text-anchor="middle" fill="rgba(165,255,180,0.72)" font-size="12" font-family="IBM Plex Mono, monospace">workload</text>' +
+          '<text x="816" y="42" text-anchor="end" fill="rgba(165,255,180,0.72)" font-size="12" font-family="IBM Plex Mono, monospace">outputs</text>' +
+          '<line x1="46" y1="66" x2="814" y2="66" stroke="rgba(60,255,20,0.12)" stroke-width="1"></line>' +
           leftEdges +
           rightEdges +
           leftBoxes +
           rightBoxes +
-          '<g>' +
-            '<rect x="360" y="118" width="140" height="84" rx="22" fill="rgba(60,255,20,0.09)" stroke="rgba(60,255,20,0.35)" stroke-width="2"></rect>' +
-            '<text x="430" y="148" text-anchor="middle" fill="#dfffe1" font-size="18" font-weight="700" font-family="IBM Plex Sans, sans-serif">' + escapeHtml(primary) + '</text>' +
-            '<text x="430" y="172" text-anchor="middle" fill="rgba(165,255,180,0.72)" font-size="12" font-family="IBM Plex Mono, monospace">' + formatNumber((snapshot.recentEvents || []).filter((event) => event.comm === primary).length) + ' recent events</text>' +
-            '<text x="430" y="188" text-anchor="middle" fill="rgba(165,255,180,0.72)" font-size="12" font-family="IBM Plex Mono, monospace">' + formatNumber(snapshot.counters.open_at || 0) + ' opens / ' + formatNumber(snapshot.counters.write || 0) + ' writes</text>' +
-          '</g>' +
+          renderCenterNode(centerX, centerY, centerWidth, centerHeight, primary, centerStats) +
+          statChips +
+          '<text x="48" y="296" fill="rgba(165,255,180,0.72)" font-size="12" font-family="IBM Plex Mono, monospace">journey</text>' +
+          journeyStrip +
         '</svg>';
       }
 
-      function renderMapNode(x, y, title, detail, color, anchor) {
-        const width = 180;
-        const boxX = anchor === "end" ? x - width : x;
-        const textX = anchor === "end" ? x - 18 : x + 18;
-        const textAnchor = anchor === "end" ? "end" : "start";
-        return '<g>' +
-          '<rect x="' + boxX + '" y="' + (y - 28) + '" width="' + width + '" height="56" rx="18" fill="rgba(8,14,24,0.92)" stroke="' + color + '" stroke-opacity="0.34"></rect>' +
-          '<text x="' + textX + '" y="' + (y - 4) + '" text-anchor="' + textAnchor + '" fill="#dfffe1" font-size="13" font-weight="700" font-family="IBM Plex Sans, sans-serif">' + escapeHtml(title) + '</text>' +
-          '<text x="' + textX + '" y="' + (y + 14) + '" text-anchor="' + textAnchor + '" fill="rgba(165,255,180,0.72)" font-size="11" font-family="IBM Plex Mono, monospace">' + escapeHtml(detail) + '</text>' +
+      function buildSessionInputNodes(snapshot) {
+        const nodes = [];
+        for (const entry of snapshot.topFiles || []) {
+          const role = classifySessionFile(entry.file);
+          if (role === "artifact") {
+            continue;
+          }
+          nodes.push({
+            title: mapPathLabel(entry.file),
+            detail: formatNumber(entry.count) + " open_at",
+            color: role === "template" ? "#8af2d3" : "#7bffb9",
+            edgeLabel: role === "template" ? "template" : "open_at"
+          });
+        }
+        return nodes;
+      }
+
+      function buildSessionOutputNodes(snapshot, primary) {
+        const nodes = [];
+
+        for (const entry of snapshot.topFiles || []) {
+          if (classifySessionFile(entry.file) !== "artifact") {
+            continue;
+          }
+          nodes.push({
+            title: mapPathLabel(entry.file),
+            detail: formatNumber(entry.count) + " artifact open",
+            color: "#b7ff6d",
+            edgeLabel: "artifact"
+          });
+        }
+
+        if ((snapshot.counters.connect || 0) > 0) {
+          nodes.push({
+            title: "network",
+            detail: formatNumber(snapshot.counters.connect) + " connect",
+            color: "#72b6ff",
+            edgeLabel: "connect"
+          });
+        }
+        if ((snapshot.counters.write || 0) > 0) {
+          nodes.push({
+            title: "writes",
+            detail: formatBytes(snapshot.counters.bytes || 0),
+            color: "#ff5f7a",
+            edgeLabel: "write"
+          });
+        }
+
+        const otherProcesses = (snapshot.topProcesses || [])
+          .filter((entry) => entry.comm !== primary && !isWrapperProcess(entry.comm))
+          .slice(0, 2);
+        for (const entry of otherProcesses) {
+          nodes.push({
+            title: entry.comm,
+            detail: formatNumber(entry.count) + " events",
+            color: "#ffd84d",
+            edgeLabel: "execve"
+          });
+        }
+
+        return nodes;
+      }
+
+      function summarizePrimaryStats(snapshot, primary) {
+        const recentPrimaryEvents = (snapshot.recentEvents || []).filter((event) => event.comm === primary);
+        const counts = { open_at: 0, connect: 0, write: 0, execve: 0 };
+        for (const event of recentPrimaryEvents) {
+          if (Object.hasOwn(counts, event.kind)) {
+            counts[event.kind] += 1;
+          }
+        }
+
+        return [
+          {
+            label: "open",
+            value: formatNumber(counts.open_at || snapshot.counters.open_at || 0),
+            color: "#7bffb9"
+          },
+          {
+            label: "connect",
+            value: formatNumber(counts.connect || snapshot.counters.connect || 0),
+            color: "#72b6ff"
+          },
+          {
+            label: "write",
+            value: formatNumber(counts.write || snapshot.counters.write || 0),
+            color: "#ff5f7a"
+          }
+        ];
+      }
+
+      function buildSessionJourney(snapshot, primary) {
+        const steps = [];
+        const ordered = selectDisplayEvents(snapshot.recentEvents || []).slice().reverse();
+        for (const event of ordered) {
+          const step = journeyStepForEvent(event, primary);
+          if (!step) {
+            continue;
+          }
+          const previous = steps[steps.length - 1];
+          if (previous && previous.title === step.title && previous.kind === step.kind) {
+            continue;
+          }
+          steps.push(step);
+          if (steps.length >= 4) {
+            break;
+          }
+        }
+
+        if (!steps.length && (snapshot.counters.connect || 0) > 0) {
+          steps.push({ kind: "connect", title: "network", detail: formatNumber(snapshot.counters.connect) + " connect", color: "#72b6ff" });
+        }
+        if (steps.length < 4 && (snapshot.counters.write || 0) > 0) {
+          steps.push({ kind: "write", title: "writes", detail: formatBytes(snapshot.counters.bytes || 0), color: "#ff5f7a" });
+        }
+
+        return steps.slice(0, 4);
+      }
+
+      function journeyStepForEvent(event, primary) {
+        if (event.kind === "open_at") {
+          const role = classifySessionFile(event.file || "");
+          return {
+            kind: "open_at",
+            title: mapPathLabel(event.file || "file"),
+            detail: role === "artifact" ? "artifact open" : role === "template" ? "template read" : "input read",
+            color: role === "artifact" ? "#b7ff6d" : "#7bffb9"
+          };
+        }
+        if (event.kind === "connect") {
+          return {
+            kind: "connect",
+            title: "network",
+            detail: "socket connect",
+            color: "#72b6ff"
+          };
+        }
+        if (event.kind === "write") {
+          return {
+            kind: "write",
+            title: event.comm === primary ? "writes" : event.comm,
+            detail: formatBytes(event.bytes || 0),
+            color: "#ff5f7a"
+          };
+        }
+        if (event.kind === "execve") {
+          return {
+            kind: "execve",
+            title: event.comm || "process",
+            detail: "exec boundary",
+            color: "#ffd84d"
+          };
+        }
+        return null;
+      }
+
+      function renderSessionEdge({ fromX, fromY, toX, toY, color, label }) {
+        const midX = (fromX + toX) / 2;
+        const path = '<path d="M ' + fromX + ' ' + fromY +
+          ' C ' + midX + ' ' + fromY + ', ' + midX + ' ' + toY + ', ' + toX + ' ' + toY +
+          '" fill="none" stroke="' + color + '" stroke-opacity="0.44" stroke-width="3"></path>';
+        const labelX = midX;
+        const labelY = (fromY + toY) / 2 - 8;
+        const pill = '<g>' +
+          '<rect x="' + (labelX - 26) + '" y="' + (labelY - 10) + '" width="52" height="18" rx="9" fill="rgba(8,14,24,0.92)" stroke="' + color + '" stroke-opacity="0.34"></rect>' +
+          '<text x="' + labelX + '" y="' + (labelY + 3) + '" text-anchor="middle" fill="' + color + '" font-size="10" font-family="IBM Plex Mono, monospace">' + escapeHtml(label) + '</text>' +
         '</g>';
+        return path + pill;
+      }
+
+      function renderCenterNode(centerX, centerY, width, height, primary, stats) {
+        return '<g>' +
+          '<rect x="' + (centerX - width / 2) + '" y="' + (centerY - height / 2) + '" width="' + width + '" height="' + height + '" rx="30" fill="rgba(25,76,25,0.34)" stroke="rgba(114,255,128,0.52)" stroke-width="2"></rect>' +
+          '<rect x="' + (centerX - width / 2 + 12) + '" y="' + (centerY - height / 2 + 12) + '" width="' + (width - 24) + '" height="' + (height - 24) + '" rx="22" fill="rgba(9,20,14,0.8)" stroke="rgba(123,255,185,0.16)"></rect>' +
+          '<text x="' + centerX + '" y="' + (centerY - 28) + '" text-anchor="middle" fill="#e7ffe9" font-size="16" font-weight="700" font-family="IBM Plex Sans, sans-serif">' + escapeHtml(primary) + '</text>' +
+          '<text x="' + centerX + '" y="' + (centerY - 8) + '" text-anchor="middle" fill="rgba(165,255,180,0.72)" font-size="11" font-family="IBM Plex Mono, monospace">current traced workload</text>' +
+          '<text x="' + centerX + '" y="' + (centerY + 62) + '" text-anchor="middle" fill="rgba(165,255,180,0.66)" font-size="11" font-family="IBM Plex Mono, monospace">' + stats.map((entry) => entry.value + " " + entry.label).join(" / ") + '</text>' +
+        '</g>';
+      }
+
+      function renderCenterStatChips(centerX, y, stats) {
+        const chipWidth = 56;
+        const gap = 12;
+        const totalWidth = stats.length * chipWidth + (stats.length - 1) * gap;
+        const startX = centerX - totalWidth / 2;
+
+        return stats.map((entry, index) => {
+          const x = startX + index * (chipWidth + gap);
+          return '<g>' +
+            '<rect x="' + x + '" y="' + y + '" width="' + chipWidth + '" height="32" rx="12" fill="rgba(8,14,24,0.88)" stroke="' + entry.color + '" stroke-opacity="0.34"></rect>' +
+            '<text x="' + (x + chipWidth / 2) + '" y="' + (y + 13) + '" text-anchor="middle" fill="' + entry.color + '" font-size="10" font-family="IBM Plex Mono, monospace">' + escapeHtml(entry.label) + '</text>' +
+            '<text x="' + (x + chipWidth / 2) + '" y="' + (y + 25) + '" text-anchor="middle" fill="#e7ffe9" font-size="11" font-weight="700" font-family="IBM Plex Mono, monospace">' + escapeHtml(entry.value) + '</text>' +
+          '</g>';
+        }).join("");
+      }
+
+      function renderJourneyStrip(steps, width, y) {
+        const pillWidth = 154;
+        const pillHeight = 54;
+        const gap = 16;
+        const totalWidth = steps.length * pillWidth + (steps.length - 1) * gap;
+        const startX = (width - totalWidth) / 2;
+
+        return steps.map((step, index) => {
+          const x = startX + index * (pillWidth + gap);
+          const arrow = index < steps.length - 1
+            ? '<path d="M ' + (x + pillWidth + 4) + ' ' + (y + pillHeight / 2) + ' L ' + (x + pillWidth + 12) + ' ' + (y + pillHeight / 2) + ' M ' + (x + pillWidth + 8) + ' ' + (y + pillHeight / 2 - 4) + ' L ' + (x + pillWidth + 12) + ' ' + (y + pillHeight / 2) + ' L ' + (x + pillWidth + 8) + ' ' + (y + pillHeight / 2 + 4) + '" fill="none" stroke="rgba(165,255,180,0.42)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>'
+            : "";
+          return '<g>' +
+            '<rect x="' + x + '" y="' + y + '" width="' + pillWidth + '" height="' + pillHeight + '" rx="18" fill="rgba(8,14,24,0.92)" stroke="' + step.color + '" stroke-opacity="0.32"></rect>' +
+            '<text x="' + (x + 16) + '" y="' + (y + 20) + '" fill="' + step.color + '" font-size="10" font-family="IBM Plex Mono, monospace">' + escapeHtml(step.kind) + '</text>' +
+            '<text x="' + (x + 16) + '" y="' + (y + 34) + '" fill="#e7ffe9" font-size="13" font-weight="700" font-family="IBM Plex Sans, sans-serif">' + escapeHtml(step.title) + '</text>' +
+            '<text x="' + (x + 16) + '" y="' + (y + 47) + '" fill="rgba(165,255,180,0.68)" font-size="11" font-family="IBM Plex Mono, monospace">' + escapeHtml(step.detail) + '</text>' +
+            arrow +
+          '</g>';
+        }).join("");
+      }
+
+      function renderMapNode(node) {
+        const width = 184;
+        const height = 60;
+        const boxX = node.anchor === "end" ? node.x - width : node.x;
+        const textX = node.anchor === "end" ? node.x - 16 : node.x + 16;
+        const textAnchor = node.anchor === "end" ? "end" : "start";
+        return '<g>' +
+          '<rect x="' + boxX + '" y="' + (node.y - height / 2) + '" width="' + width + '" height="' + height + '" rx="18" fill="rgba(8,14,24,0.94)" stroke="' + node.color + '" stroke-opacity="0.28"></rect>' +
+          '<text x="' + textX + '" y="' + (node.y - 6) + '" text-anchor="' + textAnchor + '" fill="#e7ffe9" font-size="13" font-weight="700" font-family="IBM Plex Sans, sans-serif">' + escapeHtml(node.title) + '</text>' +
+          '<text x="' + textX + '" y="' + (node.y + 14) + '" text-anchor="' + textAnchor + '" fill="rgba(165,255,180,0.68)" font-size="11" font-family="IBM Plex Mono, monospace">' + escapeHtml(node.detail) + '</text>' +
+        '</g>';
+      }
+
+      function classifySessionFile(file) {
+        const path = String(file || "").toLowerCase();
+        if (
+          path.includes("/logs/") ||
+          path.includes("/dist/") ||
+          path.includes("summary") ||
+          path.endsWith(".svg") ||
+          path.endsWith(".html")
+        ) {
+          return "artifact";
+        }
+        if (path.includes("/templates/")) {
+          return "template";
+        }
+        return "input";
+      }
+
+      function mapPathLabel(file) {
+        const parts = String(file || "").split("/").filter(Boolean);
+        if (!parts.length) {
+          return "unknown";
+        }
+        if (parts.length === 1) {
+          return parts[0];
+        }
+        return parts.slice(-2).join("/");
+      }
+
+      function isWrapperProcess(comm) {
+        return ["cargo", "rustc", "exec-target-fro", "containerd", "cc", "ld"].includes(comm);
       }
 
       function pickPrimaryProcess(snapshot) {

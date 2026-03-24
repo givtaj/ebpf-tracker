@@ -1,6 +1,6 @@
 use std::env;
 use std::fs::{self, File};
-use std::io::{self, BufReader, Read, Write};
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::{Arc, Mutex};
@@ -27,6 +27,8 @@ const GENERATED_RUNTIME_OVERRIDE_FILE_NAME: &str = "generated-runtime.override.y
 const DEFAULT_EXAMPLE_NAME: &str = "session-io-demo";
 const EXAMPLES_DIR_NAME: &str = "examples";
 const DEMO_MANIFEST_FILE_NAME: &str = "ebpf-demo.toml";
+const DASHBOARD_SCRIPT_NAME: &str = "scripts/live-trace-matrix.js";
+const DEFAULT_DASHBOARD_PORT: u16 = 43115;
 const GENERATED_EXEC_PROBE: &str = r#"tracepoint:syscalls:sys_enter_execve
 /comm != "bpftrace"/
 {
@@ -63,6 +65,7 @@ struct CliArgs {
     emit_mode: EmitMode,
     transport_mode: TransportMode,
     runtime_selection: RuntimeSelection,
+    dashboard: DashboardOptions,
     command: Vec<String>,
 }
 
@@ -72,6 +75,7 @@ struct DemoArgs {
     list_examples: bool,
     emit_mode: EmitMode,
     transport_mode: TransportMode,
+    dashboard: DashboardOptions,
 }
 
 #[derive(Debug)]
@@ -85,6 +89,21 @@ enum ParseOutcome {
     Help,
     Demo(DemoArgs),
     Run(CliArgs),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct DashboardOptions {
+    enabled: bool,
+    port: u16,
+}
+
+impl Default for DashboardOptions {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: DEFAULT_DASHBOARD_PORT,
+        }
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -139,14 +158,34 @@ impl TransportMode {
     }
 }
 
+impl EmitMode {
+    fn as_str(self) -> &'static str {
+        match self {
+            EmitMode::Raw => "raw",
+            EmitMode::Jsonl => "jsonl",
+        }
+    }
+}
+
+impl RuntimeSelection {
+    fn as_str(self) -> &'static str {
+        match self {
+            RuntimeSelection::Auto => "auto",
+            RuntimeSelection::Rust => "rust",
+            RuntimeSelection::Node => "node",
+        }
+    }
+}
+
 fn print_usage() {
     eprintln!(
-        "Usage: eBPF_tracker [--probe <file-or-name>] [--config <path>] [--log-enable] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--runtime <auto|rust|node>] <command> [args...]"
+        "Usage: eBPF_tracker [--probe <file-or-name>] [--config <path>] [--log-enable] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--runtime <auto|rust|node>] [--dashboard] [--dashboard-port <port>] <command> [args...]"
     );
-    eprintln!("Usage: eBPF_tracker demo [--list] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [example-name]");
+    eprintln!("Usage: eBPF_tracker demo [--list] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--dashboard] [--dashboard-port <port>] [example-name]");
     eprintln!("Default emit mode: raw");
     eprintln!("Default transport: bpftrace");
     eprintln!("Default runtime: auto");
+    eprintln!("Default dashboard port: {DEFAULT_DASHBOARD_PORT}");
     eprintln!("Example: eBPF_tracker cargo run");
     eprintln!("Example: eBPF_tracker npm test");
     eprintln!("Example: eBPF_tracker --config ebpf-tracker.toml cargo run");
@@ -156,6 +195,8 @@ fn print_usage() {
     eprintln!("Example: eBPF_tracker --emit jsonl cargo run");
     eprintln!("Example: eBPF_tracker --transport perf --emit jsonl cargo run");
     eprintln!("Example: eBPF_tracker --runtime node /bin/sh -lc \"npm run dev\"");
+    eprintln!("Example: eBPF_tracker --dashboard cargo run");
+    eprintln!("Example: eBPF_tracker demo --dashboard session-io-demo");
     eprintln!("Repository demo mode: eBPF_tracker demo --list");
     eprintln!("Repository demo example: eBPF_tracker demo --emit jsonl session-io-demo");
     eprintln!("The demo subcommand expects a local clone of cargo-ebpf-tracker.");
@@ -187,6 +228,16 @@ fn parse_transport_mode(raw_mode: &str) -> Result<TransportMode, String> {
     }
 }
 
+fn parse_dashboard_port(raw_port: &str) -> Result<u16, String> {
+    let port = raw_port
+        .parse::<u16>()
+        .map_err(|_| format!("invalid dashboard port: {raw_port}"))?;
+    if port == 0 {
+        return Err("dashboard port must be greater than zero".to_string());
+    }
+    Ok(port)
+}
+
 fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
     if matches!(args.first().map(String::as_str), Some("demo")) {
         return parse_demo_args(&args[1..]);
@@ -198,6 +249,7 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
     let mut emit_mode = EmitMode::Raw;
     let mut transport_mode = TransportMode::Bpftrace;
     let mut runtime_selection = RuntimeSelection::Auto;
+    let mut dashboard = DashboardOptions::default();
     let mut index = 0usize;
 
     while index < args.len() {
@@ -240,6 +292,17 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
                     .get(index + 1)
                     .ok_or_else(|| "missing value for --runtime".to_string())?;
                 runtime_selection = parse_runtime_selection(value)?;
+                index += 2;
+            }
+            "--dashboard" => {
+                dashboard.enabled = true;
+                index += 1;
+            }
+            "--dashboard-port" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| "missing value for --dashboard-port".to_string())?;
+                dashboard.port = parse_dashboard_port(value)?;
                 index += 2;
             }
             "-h" | "--help" => return Ok(ParseOutcome::Help),
@@ -287,6 +350,14 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
                 runtime_selection = parse_runtime_selection(value)?;
                 index += 1;
             }
+            _ if arg.starts_with("--dashboard-port=") => {
+                let value = arg.trim_start_matches("--dashboard-port=");
+                if value.is_empty() {
+                    return Err("missing value for --dashboard-port".to_string());
+                }
+                dashboard.port = parse_dashboard_port(value)?;
+                index += 1;
+            }
             _ => break,
         }
     }
@@ -303,6 +374,7 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
         emit_mode,
         transport_mode,
         runtime_selection,
+        dashboard,
         command,
     }))
 }
@@ -312,6 +384,7 @@ fn parse_demo_args(args: &[String]) -> Result<ParseOutcome, String> {
     let mut list_examples = false;
     let mut emit_mode = EmitMode::Raw;
     let mut transport_mode = TransportMode::Bpftrace;
+    let mut dashboard = DashboardOptions::default();
     let mut index = 0usize;
 
     while index < args.len() {
@@ -336,6 +409,17 @@ fn parse_demo_args(args: &[String]) -> Result<ParseOutcome, String> {
                 transport_mode = parse_transport_mode(value)?;
                 index += 2;
             }
+            "--dashboard" => {
+                dashboard.enabled = true;
+                index += 1;
+            }
+            "--dashboard-port" => {
+                let value = args
+                    .get(index + 1)
+                    .ok_or_else(|| "missing value for --dashboard-port".to_string())?;
+                dashboard.port = parse_dashboard_port(value)?;
+                index += 2;
+            }
             _ if arg.starts_with("--emit=") => {
                 let value = arg.trim_start_matches("--emit=");
                 if value.is_empty() {
@@ -352,6 +436,14 @@ fn parse_demo_args(args: &[String]) -> Result<ParseOutcome, String> {
                 transport_mode = parse_transport_mode(value)?;
                 index += 1;
             }
+            _ if arg.starts_with("--dashboard-port=") => {
+                let value = arg.trim_start_matches("--dashboard-port=");
+                if value.is_empty() {
+                    return Err("missing value for --dashboard-port".to_string());
+                }
+                dashboard.port = parse_dashboard_port(value)?;
+                index += 1;
+            }
             _ if arg.starts_with('-') => return Err(format!("unknown demo flag: {arg}")),
             _ if example_name.is_none() => {
                 example_name = Some(arg.clone());
@@ -366,6 +458,7 @@ fn parse_demo_args(args: &[String]) -> Result<ParseOutcome, String> {
         list_examples,
         emit_mode,
         transport_mode,
+        dashboard,
     }))
 }
 
@@ -597,6 +690,227 @@ fn resolve_perf_events(
 
     let event_kinds = trace_event_kinds_from_config(config)?;
     Ok(perf_trace_expression(&event_kinds))
+}
+
+fn build_tracker_args_for_dashboard(cli_args: &CliArgs) -> Vec<String> {
+    let mut args = Vec::new();
+
+    if let Some(probe_file) = &cli_args.probe_file {
+        args.push("--probe".to_string());
+        args.push(probe_file.clone());
+    }
+
+    if let Some(config_path) = &cli_args.config_path {
+        args.push("--config".to_string());
+        args.push(config_path.display().to_string());
+    }
+
+    if cli_args.log_enable {
+        args.push("--log-enable".to_string());
+    }
+
+    args.push("--emit".to_string());
+    args.push(EmitMode::Jsonl.as_str().to_string());
+    args.push("--transport".to_string());
+    args.push(cli_args.transport_mode.as_str().to_string());
+    args.push("--runtime".to_string());
+    args.push(cli_args.runtime_selection.as_str().to_string());
+    args.push("--".to_string());
+    args.extend(cli_args.command.iter().cloned());
+
+    args
+}
+
+fn build_demo_args_for_dashboard(demo_args: &DemoArgs) -> Vec<String> {
+    let mut args = vec![
+        "demo".to_string(),
+        "--emit".to_string(),
+        EmitMode::Jsonl.as_str().to_string(),
+        "--transport".to_string(),
+        demo_args.transport_mode.as_str().to_string(),
+    ];
+
+    if demo_args.list_examples {
+        args.push("--list".to_string());
+    }
+
+    if let Some(example_name) = &demo_args.example_name {
+        args.push(example_name.clone());
+    }
+
+    args
+}
+
+fn resolve_dashboard_script() -> Result<PathBuf, String> {
+    let mut candidates = Vec::new();
+
+    if let Ok(current_dir) = env::current_dir() {
+        candidates.push(current_dir.join(DASHBOARD_SCRIPT_NAME));
+    }
+
+    if let Ok(exe) = env::current_exe() {
+        for ancestor in exe.ancestors() {
+            candidates.push(ancestor.join(DASHBOARD_SCRIPT_NAME));
+        }
+    }
+
+    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(DASHBOARD_SCRIPT_NAME));
+
+    for candidate in candidates {
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+    }
+
+    Err(format!(
+        "dashboard mode requires a local checkout with {DASHBOARD_SCRIPT_NAME}"
+    ))
+}
+
+fn parse_dashboard_url(line: &str) -> Option<&str> {
+    line.trim()
+        .strip_prefix("live trace viewer on ")
+        .map(str::trim)
+}
+
+fn try_open_browser(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        let mut command = Command::new("open");
+        command.arg(url);
+        command
+    };
+
+    #[cfg(target_os = "linux")]
+    let mut command = {
+        let mut command = Command::new("xdg-open");
+        command.arg(url);
+        command
+    };
+
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut command = Command::new("cmd");
+        command.arg("/C").arg("start").arg("").arg(url);
+        command
+    };
+
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|err| format!("failed to launch browser for {url}: {err}"))?;
+
+    Ok(())
+}
+
+fn forward_dashboard_stdout<R: Read>(mut reader: R) -> io::Result<()> {
+    let mut stdout = io::stdout();
+    let mut buffer = [0u8; 16 * 1024];
+
+    loop {
+        let read_bytes = reader.read(&mut buffer)?;
+        if read_bytes == 0 {
+            break;
+        }
+        stdout.write_all(&buffer[..read_bytes])?;
+        stdout.flush()?;
+    }
+
+    Ok(())
+}
+
+fn forward_dashboard_stderr<R: Read>(reader: R) -> io::Result<()> {
+    let mut reader = BufReader::new(reader);
+    let mut stderr = io::stderr();
+    let mut opened = false;
+    let mut line = Vec::new();
+
+    loop {
+        line.clear();
+        let read_bytes = reader.read_until(b'\n', &mut line)?;
+        if read_bytes == 0 {
+            break;
+        }
+
+        let text = String::from_utf8_lossy(&line);
+        if !opened {
+            if let Some(url) = parse_dashboard_url(&text) {
+                if let Err(err) = try_open_browser(url) {
+                    writeln!(stderr, "dashboard ready at {url} ({err})")?;
+                }
+                opened = true;
+            }
+        }
+
+        stderr.write_all(&line)?;
+        stderr.flush()?;
+    }
+
+    Ok(())
+}
+
+fn run_with_dashboard(
+    dashboard: DashboardOptions,
+    tracker_args: Vec<String>,
+    project_dir: &Path,
+    forced_from_emit: EmitMode,
+) -> Result<i32, String> {
+    let dashboard_script = resolve_dashboard_script()?;
+    let current_exe =
+        env::current_exe().map_err(|err| format!("failed to resolve executable path: {err}"))?;
+
+    if forced_from_emit != EmitMode::Jsonl {
+        eprintln!("dashboard mode forces --emit jsonl for the viewer stream");
+    }
+
+    let mut child = Command::new("node")
+        .arg(&dashboard_script)
+        .arg("--port")
+        .arg(dashboard.port.to_string())
+        .arg("--")
+        .arg(&current_exe)
+        .args(tracker_args)
+        .current_dir(project_dir)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| {
+            format!(
+                "failed to start dashboard viewer via node {}: {err}",
+                dashboard_script.display()
+            )
+        })?;
+
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "failed to capture dashboard stdout".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "failed to capture dashboard stderr".to_string())?;
+
+    let out_handle = thread::spawn(move || forward_dashboard_stdout(stdout));
+    let err_handle = thread::spawn(move || forward_dashboard_stderr(stderr));
+
+    let status = child
+        .wait()
+        .map_err(|err| format!("failed waiting for dashboard viewer: {err}"))?;
+
+    let out_result = out_handle
+        .join()
+        .map_err(|_| "dashboard stdout forwarding thread panicked".to_string())?;
+    out_result.map_err(|err| format!("dashboard stdout forwarding failed: {err}"))?;
+
+    let err_result = err_handle
+        .join()
+        .map_err(|_| "dashboard stderr forwarding thread panicked".to_string())?;
+    err_result.map_err(|err| format!("dashboard stderr forwarding failed: {err}"))?;
+
+    Ok(exit_code(status))
 }
 
 fn build_compose_command(
@@ -1128,6 +1442,7 @@ fn run_demo(demo_args: DemoArgs) -> Result<i32, String> {
             emit_mode: demo_args.emit_mode,
             transport_mode: demo_args.transport_mode,
             runtime_selection: manifest.runtime_selection,
+            dashboard: DashboardOptions::default(),
             command: manifest.command,
         },
         example_dir,
@@ -1182,11 +1497,36 @@ fn run() -> Result<i32, String> {
             print_usage();
             Ok(0)
         }
-        ParseOutcome::Demo(demo_args) => run_demo(demo_args),
+        ParseOutcome::Demo(demo_args) => {
+            if demo_args.dashboard.enabled {
+                if demo_args.list_examples {
+                    return Err("--dashboard is not supported with demo --list".to_string());
+                }
+                let current_dir = env::current_dir()
+                    .map_err(|err| format!("failed to read current dir: {err}"))?;
+                run_with_dashboard(
+                    demo_args.dashboard,
+                    build_demo_args_for_dashboard(&demo_args),
+                    &current_dir,
+                    demo_args.emit_mode,
+                )
+            } else {
+                run_demo(demo_args)
+            }
+        }
         ParseOutcome::Run(cli_args) => {
             let project_dir =
                 env::current_dir().map_err(|err| format!("failed to read current dir: {err}"))?;
-            run_cli(cli_args, project_dir)
+            if cli_args.dashboard.enabled {
+                run_with_dashboard(
+                    cli_args.dashboard,
+                    build_tracker_args_for_dashboard(&cli_args),
+                    &project_dir,
+                    cli_args.emit_mode,
+                )
+            } else {
+                run_cli(cli_args, project_dir)
+            }
         }
     }
 }
@@ -1205,8 +1545,10 @@ pub fn main_entry() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_generated_probe, build_runtime_override, load_config, load_demo_manifest, parse_args,
-        stream_record_for_bytes, ParseOutcome, RuntimeConfig, TransportMode,
+        build_demo_args_for_dashboard, build_generated_probe, build_runtime_override,
+        build_tracker_args_for_dashboard, load_config, load_demo_manifest, parse_args,
+        parse_dashboard_url, stream_record_for_bytes, DashboardOptions, EmitMode, ParseOutcome,
+        RuntimeConfig, TransportMode, DEFAULT_DASHBOARD_PORT,
     };
     use crate::runtime::RuntimeSelection;
     use ebpf_tracker_events::StreamRecord;
@@ -1406,6 +1748,126 @@ mod tests {
             }
             _ => panic!("expected run outcome"),
         }
+    }
+
+    #[test]
+    fn cli_args_parse_dashboard_options() {
+        let parsed = parse_args(vec![
+            "--dashboard".to_string(),
+            "--dashboard-port=44000".to_string(),
+            "cargo".to_string(),
+            "run".to_string(),
+        ])
+        .expect("args should parse");
+
+        match parsed {
+            ParseOutcome::Run(cli_args) => {
+                assert_eq!(
+                    cli_args.dashboard,
+                    DashboardOptions {
+                        enabled: true,
+                        port: 44000
+                    }
+                );
+            }
+            _ => panic!("expected run outcome"),
+        }
+    }
+
+    #[test]
+    fn demo_args_parse_dashboard_options() {
+        let parsed = parse_args(vec![
+            "demo".to_string(),
+            "--dashboard".to_string(),
+            "--dashboard-port".to_string(),
+            "44001".to_string(),
+            "session-io-demo".to_string(),
+        ])
+        .expect("args should parse");
+
+        match parsed {
+            ParseOutcome::Demo(demo_args) => {
+                assert_eq!(
+                    demo_args.dashboard,
+                    DashboardOptions {
+                        enabled: true,
+                        port: 44001
+                    }
+                );
+            }
+            _ => panic!("expected demo outcome"),
+        }
+    }
+
+    #[test]
+    fn dashboard_tracker_args_force_jsonl_and_preserve_command() {
+        let args = build_tracker_args_for_dashboard(&super::CliArgs {
+            probe_file: Some("/probes/custom.bt".to_string()),
+            config_path: Some(Path::new("ebpf-tracker.toml").to_path_buf()),
+            log_enable: true,
+            emit_mode: EmitMode::Raw,
+            transport_mode: TransportMode::Perf,
+            runtime_selection: RuntimeSelection::Node,
+            dashboard: DashboardOptions {
+                enabled: true,
+                port: DEFAULT_DASHBOARD_PORT,
+            },
+            command: vec!["npm".to_string(), "test".to_string()],
+        });
+
+        assert_eq!(
+            args,
+            vec![
+                "--probe",
+                "/probes/custom.bt",
+                "--config",
+                "ebpf-tracker.toml",
+                "--log-enable",
+                "--emit",
+                "jsonl",
+                "--transport",
+                "perf",
+                "--runtime",
+                "node",
+                "--",
+                "npm",
+                "test",
+            ]
+        );
+    }
+
+    #[test]
+    fn dashboard_demo_args_force_jsonl_after_demo_subcommand() {
+        let args = build_demo_args_for_dashboard(&super::DemoArgs {
+            example_name: Some("session-io-demo".to_string()),
+            list_examples: false,
+            emit_mode: EmitMode::Raw,
+            transport_mode: TransportMode::Perf,
+            dashboard: DashboardOptions {
+                enabled: true,
+                port: DEFAULT_DASHBOARD_PORT,
+            },
+        });
+
+        assert_eq!(
+            args,
+            vec![
+                "demo",
+                "--emit",
+                "jsonl",
+                "--transport",
+                "perf",
+                "session-io-demo",
+            ]
+        );
+    }
+
+    #[test]
+    fn dashboard_url_parser_extracts_viewer_address() {
+        assert_eq!(
+            parse_dashboard_url("live trace viewer on http://127.0.0.1:43115\n"),
+            Some("http://127.0.0.1:43115")
+        );
     }
 
     #[test]
