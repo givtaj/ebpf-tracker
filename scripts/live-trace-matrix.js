@@ -19,6 +19,7 @@ function main() {
   const source = options.replayFile
     ? startReplay(options, state, (code, signal) => finishSource(state, code, signal))
     : startTracer(options, state, (code, signal) => finishSource(state, code, signal));
+  state.source = source;
 
   server.listen(options.port, options.host, () => {
     const url = `http://${options.host}:${options.port}`;
@@ -31,6 +32,7 @@ function main() {
       command: state.command,
       mode: state.mode,
       progress: state.progress,
+      replay: state.replay,
       url
     });
   });
@@ -131,7 +133,7 @@ function createState() {
   return {
     clients: new Set(),
     recentEvents: [],
-    counters: { open_at: 0, execve: 0, connect: 0, write: 0, other: 0, bytes: 0 },
+    counters: emptyCounters(),
     processCounts: new Map(),
     fileCounts: new Map(),
     writes: [],
@@ -143,7 +145,15 @@ function createState() {
     command: [],
     mode: "live",
     status: "starting",
-    progress: { emitted: 0, total: 0 }
+    progress: { emitted: 0, total: 0 },
+    replay: {
+      supported: false,
+      paused: false,
+      speed: 1,
+      stepSize: 8,
+      ended: false
+    },
+    source: null
   };
 }
 
@@ -184,6 +194,12 @@ function startTracer(options, state, onEnd) {
   return {
     stop(signal) {
       child.kill(signal === "SIGINT" ? "SIGINT" : "SIGTERM");
+    },
+    control() {
+      return {
+        ok: false,
+        message: "transport controls are only available in replay mode"
+      };
     }
   };
 }
@@ -191,45 +207,203 @@ function startTracer(options, state, onEnd) {
 function startReplay(options, state, onEnd) {
   const replayRecords = loadReplayRecords(options.replayFile, options.focusComm);
   state.progress.total = replayRecords.length;
+  state.replay.supported = true;
+  state.replay.speed = options.replayIntervalMs ? 1 : options.replaySpeed;
+  state.replay.stepSize = 8;
+  state.replay.paused = false;
+  state.replay.ended = false;
 
   let timer = null;
   let index = 0;
   let stopped = false;
+  let paused = false;
+  let speed = options.replayIntervalMs ? 1 : options.replaySpeed;
+  let intervalMs = options.replayIntervalMs;
+  let stepSize = 8;
+  let ended = false;
 
-  const tick = () => {
-    if (stopped) {
+  const publishReplayState = () => {
+    state.progress.emitted = index;
+    state.progress.total = replayRecords.length;
+    state.replay = {
+      supported: true,
+      paused,
+      speed,
+      stepSize,
+      ended
+    };
+    broadcast(state, "snapshot", buildSnapshot(state));
+    broadcast(state, "status", {
+      status: state.status,
+      command: state.command,
+      mode: state.mode,
+      progress: state.progress,
+      replay: state.replay,
+      url: state.url
+    });
+  };
+
+  const clearTimer = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+
+  const scheduleNext = (overrideDelayMs) => {
+    if (stopped || paused || ended) {
       return;
     }
+    clearTimer();
+    const delayMs =
+      overrideDelayMs === undefined
+        ? replayDelayMs(replayRecords, index, speed, intervalMs)
+        : overrideDelayMs;
+    timer = setTimeout(tick, delayMs);
+  };
+
+  const resetReplay = ({ autoPlay }) => {
+    clearTimer();
+    index = 0;
+    ended = false;
+    paused = !autoPlay;
+    state.status = "running";
+    state.tracerEnded = false;
+    state.exitCode = null;
+    state.exitSignal = null;
+    clearTraceState(state);
+    publishReplayState();
+    if (autoPlay) {
+      scheduleNext(120);
+    }
+  };
+
+  const emitOne = () => {
+    if (stopped || ended) {
+      return false;
+    }
     if (index >= replayRecords.length) {
+      ended = true;
+      publishReplayState();
       onEnd(0, null);
-      return;
+      return false;
     }
 
     const record = {
       ...replayRecords[index],
       timestamp_unix_ms: Date.now()
     };
-    state.progress.emitted = index + 1;
-    handleTraceRecord(record, state);
     index += 1;
+    state.progress.emitted = index;
+    handleTraceRecord(record, state);
 
     if (index >= replayRecords.length) {
+      ended = true;
+      publishReplayState();
       onEnd(0, null);
-      return;
+      return false;
     }
 
-    timer = setTimeout(tick, replayDelayMs(replayRecords, index, options));
+    publishReplayState();
+    return true;
   };
 
-  timer = setTimeout(tick, 120);
+  const tick = () => {
+    if (stopped) {
+      return;
+    }
+    if (paused || ended) {
+      return;
+    }
+    const emitted = emitOne();
+    if (emitted) {
+      scheduleNext();
+    }
+  };
+
+  scheduleNext(120);
 
   return {
     stop(signal) {
       stopped = true;
-      if (timer) {
-        clearTimeout(timer);
-      }
+      clearTimer();
       onEnd(null, signal === "SIGINT" ? "SIGINT" : "SIGTERM");
+    },
+    control(action, payload = {}) {
+      switch (action) {
+        case "play":
+          if (ended) {
+            resetReplay({ autoPlay: true });
+            return { ok: true };
+          }
+          paused = false;
+          state.status = "running";
+          publishReplayState();
+          scheduleNext(0);
+          return { ok: true };
+        case "pause":
+          paused = true;
+          state.status = "paused";
+          clearTimer();
+          publishReplayState();
+          return { ok: true };
+        case "restart":
+          resetReplay({ autoPlay: true });
+          return { ok: true };
+        case "step": {
+          paused = true;
+          state.status = "paused";
+          clearTimer();
+          const steps = Math.max(1, Math.min(Number(payload.count || 1), 64));
+          for (let cursor = 0; cursor < steps; cursor += 1) {
+            if (!emitOne()) {
+              break;
+            }
+          }
+          publishReplayState();
+          return { ok: true };
+        }
+        case "forward": {
+          const jump = Math.max(1, Math.min(Number(payload.count || stepSize), 64));
+          const wasPaused = paused;
+          clearTimer();
+          paused = true;
+          state.status = "paused";
+          for (let cursor = 0; cursor < jump; cursor += 1) {
+            if (!emitOne()) {
+              break;
+            }
+          }
+          paused = wasPaused && !ended;
+          state.status = ended ? "exited" : paused ? "paused" : "running";
+          publishReplayState();
+          if (!paused && !ended) {
+            scheduleNext(0);
+          }
+          return { ok: true };
+        }
+        case "set_speed": {
+          const nextSpeed = Number(payload.value);
+          if (!Number.isFinite(nextSpeed) || nextSpeed <= 0) {
+            return { ok: false, message: "invalid replay speed" };
+          }
+          intervalMs = null;
+          speed = nextSpeed;
+          publishReplayState();
+          if (!paused && !ended) {
+            scheduleNext();
+          }
+          return { ok: true };
+        }
+        case "set_step_size": {
+          const nextStepSize = Math.max(1, Math.min(Number(payload.value || 8), 64));
+          stepSize = nextStepSize;
+          publishReplayState();
+          return { ok: true };
+        }
+        default:
+          return { ok: false, message: `unknown control action: ${action}` };
+      }
     }
   };
 }
@@ -247,7 +421,8 @@ function finishSource(state, code, signal) {
     status: state.status,
     code,
     signal,
-    progress: state.progress
+    progress: state.progress,
+    replay: state.replay
   });
 }
 
@@ -301,9 +476,9 @@ function loadReplayRecords(replayFile, focusComm) {
   return records;
 }
 
-function replayDelayMs(records, nextIndex, options) {
-  if (options.replayIntervalMs) {
-    return options.replayIntervalMs;
+function replayDelayMs(records, nextIndex, speed, intervalMs) {
+  if (intervalMs) {
+    return intervalMs;
   }
 
   const current = records[nextIndex - 1];
@@ -316,8 +491,22 @@ function replayDelayMs(records, nextIndex, options) {
     Number(next.timestamp_unix_ms || 0) - Number(current.timestamp_unix_ms || 0),
     0
   );
-  const scaled = delta / options.replaySpeed;
+  const scaled = delta / speed;
   return Math.max(40, Math.min(Math.round(scaled), 350));
+}
+
+function clearTraceState(state) {
+  state.recentEvents = [];
+  state.counters = emptyCounters();
+  state.processCounts = new Map();
+  state.fileCounts = new Map();
+  state.writes = [];
+  state.startedAt = Date.now();
+  state.progress.emitted = 0;
+}
+
+function emptyCounters() {
+  return { open_at: 0, execve: 0, connect: 0, write: 0, other: 0, bytes: 0 };
 }
 
 function handleTraceLine(line, state) {
@@ -413,7 +602,8 @@ function buildSnapshot(state) {
     command: state.command,
     mode: state.mode,
     status: state.status,
-    progress: state.progress
+    progress: state.progress,
+    replay: state.replay
   };
 }
 
@@ -438,6 +628,44 @@ function routeRequest(req, res, state) {
     return;
   }
 
+  if (req.url === "/control" && req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString("utf8");
+      if (body.length > 32 * 1024) {
+        body = body.slice(0, 32 * 1024);
+      }
+    });
+    req.on("end", () => {
+      let payload = {};
+      if (body.trim()) {
+        try {
+          payload = JSON.parse(body);
+        } catch (error) {
+          respondJson(res, 400, {
+            ok: false,
+            message: `invalid control payload: ${error.message}`
+          });
+          return;
+        }
+      }
+
+      const action = String(payload.action || "");
+      if (!action) {
+        respondJson(res, 400, { ok: false, message: "missing control action" });
+        return;
+      }
+      if (!state.source || typeof state.source.control !== "function") {
+        respondJson(res, 409, { ok: false, message: "control surface unavailable" });
+        return;
+      }
+
+      const result = state.source.control(action, payload);
+      respondJson(res, result.ok ? 200 : 422, result);
+    });
+    return;
+  }
+
   res.writeHead(404);
   res.end("not found");
 }
@@ -447,6 +675,11 @@ function broadcast(state, eventName, payload) {
   for (const client of state.clients) {
     client.write(data);
   }
+}
+
+function respondJson(res, statusCode, payload) {
+  res.writeHead(statusCode, { "content-type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(payload));
 }
 
 function glyphForKind(kind) {
@@ -496,7 +729,21 @@ function isInterestingFile(file) {
     file.startsWith("/proc") ||
     file.startsWith("/sys") ||
     file.startsWith("/dev") ||
-    file.includes(".so")
+    file.includes(".so") ||
+    file.includes("/cargo-target/") ||
+    file.includes("/rustup/toolchains/") ||
+    file.includes("/tls/") ||
+    file.includes("/atomics/") ||
+    isNoiseBasename(file)
+  );
+}
+
+function isNoiseBasename(file) {
+  const base = String(file).split("/").pop()?.toLowerCase() || "";
+  return (
+    base === "ld.so.cache" ||
+    base === "locale-archive" ||
+    /^lib(c|gcc|pthread|m|dl|stdc\+\+)([-._]|$)/.test(base)
   );
 }
 
@@ -555,6 +802,7 @@ function renderHtml() {
         gap: 16px;
         grid-template-columns: 1.1fr 0.9fr;
         margin-bottom: 16px;
+        align-items: start;
       }
 
       .panel {
@@ -609,6 +857,142 @@ function renderHtml() {
         text-transform: uppercase;
       }
 
+      .transport-deck {
+        margin-top: 6px;
+        padding: 14px;
+        border-radius: 18px;
+        background:
+          linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02)),
+          rgba(0,0,0,0.22);
+        border: 1px solid rgba(60, 255, 20, 0.14);
+      }
+
+      .transport-deck.disabled {
+        opacity: 0.58;
+      }
+
+      .transport-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: baseline;
+        margin-bottom: 12px;
+      }
+
+      .transport-head strong {
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        font: 700 0.78rem/1.2 "IBM Plex Mono", monospace;
+      }
+
+      .transport-head small {
+        color: var(--muted);
+      }
+
+      .transport-buttons {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 8px;
+      }
+
+      .transport-btn {
+        padding: 12px 8px;
+        border: 1px solid rgba(60, 255, 20, 0.18);
+        border-radius: 14px;
+        background: rgba(60,255,20,0.06);
+        color: var(--text);
+        font: 700 0.76rem/1 "IBM Plex Mono", monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        cursor: pointer;
+      }
+
+      .transport-btn:hover:not(:disabled) {
+        background: rgba(60,255,20,0.12);
+      }
+
+      .transport-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+
+      .knob-row {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 14px;
+      }
+
+      .knob {
+        position: relative;
+        display: grid;
+        justify-items: center;
+        gap: 8px;
+        padding: 8px 6px 2px;
+        border-radius: 16px;
+        background: rgba(0,0,0,0.14);
+      }
+
+      .knob-input {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+      }
+
+      .knob-input:disabled {
+        cursor: not-allowed;
+      }
+
+      .knob-dial {
+        --angle: -135deg;
+        position: relative;
+        width: 78px;
+        height: 78px;
+        border-radius: 50%;
+        background:
+          radial-gradient(circle at 30% 28%, rgba(255,255,255,0.16), transparent 24%),
+          linear-gradient(145deg, rgba(255,255,255,0.08), rgba(0,0,0,0.36));
+        border: 1px solid rgba(255,255,255,0.08);
+        box-shadow:
+          inset 0 1px 1px rgba(255,255,255,0.08),
+          0 12px 24px rgba(0,0,0,0.28);
+      }
+
+      .knob-dial::after {
+        content: "";
+        position: absolute;
+        inset: 8px;
+        border-radius: 50%;
+        border: 1px solid rgba(60, 255, 20, 0.12);
+      }
+
+      .knob-indicator {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 4px;
+        height: 28px;
+        margin-left: -2px;
+        margin-top: -29px;
+        border-radius: 999px;
+        background: linear-gradient(180deg, #eaffef, var(--green));
+        box-shadow: 0 0 12px rgba(60,255,20,0.5);
+        transform-origin: 50% calc(100% - 4px);
+        transform: rotate(var(--angle));
+      }
+
+      .knob-label {
+        color: var(--muted);
+        font: 700 0.72rem/1.2 "IBM Plex Mono", monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+      }
+
+      .knob strong {
+        font: 700 0.92rem/1.2 "IBM Plex Mono", monospace;
+      }
+
       .metrics {
         display: grid;
         gap: 12px;
@@ -646,6 +1030,7 @@ function renderHtml() {
         display: grid;
         gap: 16px;
         grid-template-columns: 1.2fr 0.8fr;
+        align-items: start;
       }
 
       .stack {
@@ -782,6 +1167,19 @@ function renderHtml() {
         font: 0.82rem/1.45 "IBM Plex Mono", monospace;
       }
 
+      #recent-events {
+        max-height: 980px;
+        overflow: auto;
+        padding-right: 4px;
+      }
+
+      #file-list,
+      #write-list {
+        max-height: 360px;
+        overflow: auto;
+        padding-right: 4px;
+      }
+
       @keyframes fadein {
         from { opacity: 0; transform: translateY(-3px); }
         to { opacity: 1; transform: translateY(0); }
@@ -813,6 +1211,33 @@ function renderHtml() {
           <div><strong>progress</strong><br><small id="progress-box">0 / 0</small></div>
           <div><strong>viewer</strong><br><small id="viewer-url">waiting for server</small></div>
           <div><strong>command</strong><pre id="command-box">starting...</pre></div>
+          <section class="transport-deck" id="transport-deck">
+            <div class="transport-head">
+              <strong>Replay Deck</strong>
+              <small id="transport-note">live stream, controls bypassed</small>
+            </div>
+            <div class="transport-buttons">
+              <button class="transport-btn" id="restart-btn" type="button">restart</button>
+              <button class="transport-btn" id="play-btn" type="button">play</button>
+              <button class="transport-btn" id="pause-btn" type="button">pause</button>
+              <button class="transport-btn" id="step-btn" type="button">step</button>
+              <button class="transport-btn" id="forward-btn" type="button">ffwd</button>
+            </div>
+            <div class="knob-row">
+              <label class="knob" id="speed-knob-wrap">
+                <input class="knob-input" id="speed-knob" type="range" min="0.25" max="8" step="0.25" value="1">
+                <span class="knob-dial"><span class="knob-indicator"></span></span>
+                <span class="knob-label">tempo</span>
+                <strong id="speed-readout">1.00x</strong>
+              </label>
+              <label class="knob" id="jump-knob-wrap">
+                <input class="knob-input" id="jump-knob" type="range" min="1" max="24" step="1" value="8">
+                <span class="knob-dial"><span class="knob-indicator"></span></span>
+                <span class="knob-label">jump</span>
+                <strong id="jump-readout">8 ev</strong>
+              </label>
+            </div>
+          </section>
         </aside>
       </section>
 
@@ -881,6 +1306,19 @@ function renderHtml() {
         stderrBox: document.getElementById("stderr-box"),
         commandBox: document.getElementById("command-box"),
         viewerUrl: document.getElementById("viewer-url"),
+        transportDeck: document.getElementById("transport-deck"),
+        transportNote: document.getElementById("transport-note"),
+        restartBtn: document.getElementById("restart-btn"),
+        playBtn: document.getElementById("play-btn"),
+        pauseBtn: document.getElementById("pause-btn"),
+        stepBtn: document.getElementById("step-btn"),
+        forwardBtn: document.getElementById("forward-btn"),
+        speedKnobWrap: document.getElementById("speed-knob-wrap"),
+        speedKnob: document.getElementById("speed-knob"),
+        speedReadout: document.getElementById("speed-readout"),
+        jumpKnobWrap: document.getElementById("jump-knob-wrap"),
+        jumpKnob: document.getElementById("jump-knob"),
+        jumpReadout: document.getElementById("jump-readout"),
         modeBox: document.getElementById("mode-box"),
         progressBox: document.getElementById("progress-box"),
         statusChip: document.getElementById("status-chip"),
@@ -920,10 +1358,35 @@ function renderHtml() {
         if (payload.progress) {
           els.progressBox.textContent = payload.progress.emitted + " / " + payload.progress.total;
         }
+        if (payload.replay) {
+          applyReplayState(payload.replay, payload.progress || null);
+        }
         if (payload.url) {
           els.viewerUrl.textContent = payload.url;
         }
       });
+
+      els.restartBtn.addEventListener("click", () => sendControl("restart"));
+      els.playBtn.addEventListener("click", () => sendControl("play"));
+      els.pauseBtn.addEventListener("click", () => sendControl("pause"));
+      els.stepBtn.addEventListener("click", () => sendControl("step"));
+      els.forwardBtn.addEventListener("click", () =>
+        sendControl("forward", { count: Number(els.jumpKnob.value) })
+      );
+      els.speedKnob.addEventListener("input", () => {
+        const value = Number(els.speedKnob.value);
+        updateKnob(els.speedKnobWrap, value, 0.25, 8, (current) => current.toFixed(2) + "x", els.speedReadout);
+      });
+      els.speedKnob.addEventListener("change", () =>
+        sendControl("set_speed", { value: Number(els.speedKnob.value) })
+      );
+      els.jumpKnob.addEventListener("input", () => {
+        const value = Number(els.jumpKnob.value);
+        updateKnob(els.jumpKnobWrap, value, 1, 24, (current) => current + " ev", els.jumpReadout);
+      });
+      els.jumpKnob.addEventListener("change", () =>
+        sendControl("set_step_size", { value: Number(els.jumpKnob.value) })
+      );
 
       function renderSnapshot(snapshot) {
         if (snapshot.command?.length) {
@@ -941,19 +1404,25 @@ function renderHtml() {
         if (snapshot.progress) {
           els.progressBox.textContent = snapshot.progress.emitted + " / " + snapshot.progress.total;
         }
+        applyReplayState(snapshot.replay || { supported: false }, snapshot.progress || null);
         els.open.textContent = formatNumber(snapshot.counters.open_at);
         els.exec.textContent = formatNumber(snapshot.counters.execve);
         els.connect.textContent = formatNumber(snapshot.counters.connect);
         els.write.textContent = formatNumber(snapshot.counters.write);
         els.bytes.textContent = formatBytes(snapshot.counters.bytes);
-        els.traceWaterfall.innerHTML = renderWaterfall(snapshot.recentEvents);
+        const displayEvents = selectDisplayEvents(snapshot.recentEvents || []);
+        els.traceWaterfall.innerHTML = renderWaterfall(displayEvents);
         els.traceMap.innerHTML = renderTraceMap(snapshot);
+        if (!snapshot.recentEvents?.length) {
+          state.recentRain = [];
+          addRainFrame();
+        }
         if (!state.recentRain.length && snapshot.recentEvents?.length) {
           state.recentRain = snapshot.recentEvents.slice(0, 18);
           addRainFrame();
         }
 
-        els.recentEvents.innerHTML = snapshot.recentEvents.map((event) => {
+        els.recentEvents.innerHTML = displayEvents.map((event) => {
           return '<div class="row">' +
             '<span class="pill ' + escapeClass(event.kind || "other") + '">' + escapeHtml(event.kind || "other") + '</span>' +
             '<div><strong>' + escapeHtml(event.text) + '</strong><small>' +
@@ -1007,6 +1476,73 @@ function renderHtml() {
             ' :: ' + escapeHtml(entry.text || "") +
           '</div>';
         }).join("");
+      }
+
+      function selectDisplayEvents(events) {
+        const filtered = events.filter((event) => {
+          return event.kind !== "open_at" || isInterestingPath(event.file || "");
+        });
+        return filtered.length ? filtered : events;
+      }
+
+      function applyReplayState(replay, progress) {
+        const supported = Boolean(replay?.supported);
+        const paused = Boolean(replay?.paused);
+        const ended = Boolean(replay?.ended);
+        els.transportDeck.classList.toggle("disabled", !supported);
+        els.restartBtn.disabled = !supported;
+        els.playBtn.disabled = !supported || (!paused && !ended);
+        els.pauseBtn.disabled = !supported || paused || ended;
+        els.stepBtn.disabled = !supported;
+        els.forwardBtn.disabled = !supported;
+        els.speedKnob.disabled = !supported;
+        els.jumpKnob.disabled = !supported;
+
+        if (!supported) {
+          els.transportNote.textContent = "live stream, controls bypassed";
+        } else if (ended) {
+          els.transportNote.textContent = "replay ended, hit restart or play";
+        } else if (paused) {
+          const current = progress ? progress.emitted : 0;
+          const total = progress ? progress.total : 0;
+          els.transportNote.textContent = "paused at " + current + " / " + total;
+        } else {
+          els.transportNote.textContent = "rolling with producer controls armed";
+        }
+
+        const speed = Number(replay?.speed || els.speedKnob.value || 1);
+        const stepSize = Number(replay?.stepSize || els.jumpKnob.value || 8);
+        els.speedKnob.value = String(speed);
+        els.jumpKnob.value = String(stepSize);
+        updateKnob(els.speedKnobWrap, speed, 0.25, 8, (current) => current.toFixed(2) + "x", els.speedReadout);
+        updateKnob(els.jumpKnobWrap, stepSize, 1, 24, (current) => current + " ev", els.jumpReadout);
+      }
+
+      async function sendControl(action, extra = {}) {
+        try {
+          const response = await fetch("/control", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ action, ...extra })
+          });
+          if (!response.ok) {
+            const payload = await response.json().catch(() => ({ message: response.statusText }));
+            els.transportNote.textContent = payload.message || "control request failed";
+          }
+        } catch (error) {
+          els.transportNote.textContent = error instanceof Error ? error.message : String(error);
+        }
+      }
+
+      function updateKnob(wrapper, value, min, max, formatValue, readout) {
+        const normalized = (Number(value) - min) / Math.max(max - min, 1);
+        const angle = -135 + normalized * 270;
+        wrapper.style.setProperty("--angle", angle.toFixed(1) + "deg");
+        const dial = wrapper.querySelector(".knob-dial");
+        if (dial) {
+          dial.style.setProperty("--angle", angle.toFixed(1) + "deg");
+        }
+        readout.textContent = formatValue(Number(value));
       }
 
       function renderWaterfall(events) {
@@ -1233,7 +1769,21 @@ function renderHtml() {
           path.startsWith("/proc") ||
           path.startsWith("/sys") ||
           path.startsWith("/dev") ||
-          path.includes(".so")
+          path.includes(".so") ||
+          path.includes("/cargo-target/") ||
+          path.includes("/rustup/toolchains/") ||
+          path.includes("/tls/") ||
+          path.includes("/atomics/") ||
+          isNoiseBase(path)
+        );
+      }
+
+      function isNoiseBase(file) {
+        const base = String(file || "").split("/").pop()?.toLowerCase() || "";
+        return (
+          base === "ld.so.cache" ||
+          base === "locale-archive" ||
+          /^lib(c|gcc|pthread|m|dl|stdc\\+\\+)([-._]|$)/.test(base)
         );
       }
 
