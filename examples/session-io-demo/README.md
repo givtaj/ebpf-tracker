@@ -40,11 +40,10 @@ Open the live dashboard for the same example:
 /path/to/cargo-ebpf-tracker/target/debug/eBPF_tracker demo --dashboard session-io-demo
 ```
 
-That dashboard run still uses the same `ebpf-demo.toml` manifest and now keeps
-a replayable trace log under `logs/`, so you can reopen the session later with
-`cargo viewer -- --replay logs/ebpf-tracker-YYYYMMDD-HHMMSS.log`.
-The viewer also reads the manifest's product/sponsor metadata from the stored
-`session` record, so replay carries the same demo branding as the live run.
+That dashboard run still uses the same `ebpf-demo.toml` manifest and keeps a
+replayable trace log under `logs/`, so you can reopen the session later with
+`cargo viewer -- --replay logs/ebpf-tracker-YYYYMMDD-HHMMSS.log`. The stored
+`session` record carries the same product/sponsor metadata into replay.
 
 Stream the same demo as JSON Lines:
 

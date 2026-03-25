@@ -4,8 +4,15 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const VIEWER_SCRIPT_FILE_NAME: &str = "live-trace-matrix.js";
+const DEMO_LIBRARY_DIR_NAME: &str = "demo-library";
 const GENERATED_VIEWER_ROOT_PREFIX: &str = "viewer-v";
 const EMBEDDED_VIEWER_SCRIPT: &str = include_str!("../assets/live-trace-matrix.js");
+const EMBEDDED_SESSION_IO_DEMO_REPLAY: &str =
+    include_str!("../demo-library/session-io-demo.jsonl");
+const EMBEDDED_POSTCARD_RUST_REPLAY: &str =
+    include_str!("../demo-library/postcard-generator-rust.jsonl");
+const EMBEDDED_POSTCARD_NODE_REPLAY: &str =
+    include_str!("../demo-library/postcard-generator-node.jsonl");
 
 pub fn viewer_script_path() -> Result<PathBuf, String> {
     if let Ok(path) = env::var("EBPF_TRACKER_VIEWER_SCRIPT") {
@@ -36,6 +43,7 @@ pub fn viewer_script_path() -> Result<PathBuf, String> {
         let result = (|| -> Result<PathBuf, String> {
             let viewer_script = viewer_root.join(VIEWER_SCRIPT_FILE_NAME);
             write_if_changed(&viewer_script, EMBEDDED_VIEWER_SCRIPT)?;
+            write_demo_library(&viewer_root)?;
             Ok(viewer_script)
         })();
 
@@ -49,6 +57,23 @@ pub fn viewer_script_path() -> Result<PathBuf, String> {
         "failed to materialize viewer assets: {}",
         errors.join("; ")
     ))
+}
+
+fn write_demo_library(viewer_root: &Path) -> Result<(), String> {
+    let demo_library_root = viewer_root.join(DEMO_LIBRARY_DIR_NAME);
+    write_if_changed(
+        &demo_library_root.join("session-io-demo.jsonl"),
+        EMBEDDED_SESSION_IO_DEMO_REPLAY,
+    )?;
+    write_if_changed(
+        &demo_library_root.join("postcard-generator-rust.jsonl"),
+        EMBEDDED_POSTCARD_RUST_REPLAY,
+    )?;
+    write_if_changed(
+        &demo_library_root.join("postcard-generator-node.jsonl"),
+        EMBEDDED_POSTCARD_NODE_REPLAY,
+    )?;
+    Ok(())
 }
 
 pub fn build_node_command(args: &[String]) -> Result<Command, String> {

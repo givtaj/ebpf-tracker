@@ -9,10 +9,34 @@ const DEFAULT_PORT = 43115;
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_TARGET = ["./target/debug/eBPF_tracker", "demo", "session-io-demo"];
 const MAX_PORT_RETRIES = 16;
+const BUNDLED_REPLAYS = [
+  {
+    id: "bundled:session-io-demo",
+    fileName: "session-io-demo.jsonl",
+    title: "Session IO Demo",
+    detail: "Bundled replay · build plus runtime side effects",
+    demoName: "session-io-demo"
+  },
+  {
+    id: "bundled:postcard-generator-rust",
+    fileName: "postcard-generator-rust.jsonl",
+    title: "Postcard Generator Rust",
+    detail: "Bundled replay · visible artifact with Rust",
+    demoName: "postcard-generator-rust"
+  },
+  {
+    id: "bundled:postcard-generator-node",
+    fileName: "postcard-generator-node.jsonl",
+    title: "Postcard Generator Node",
+    detail: "Bundled replay · visible artifact with Node",
+    demoName: "postcard-generator-node"
+  }
+];
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const state = createState();
+  state.library = discoverReplayLibrary();
   state.command = formatSourceLabel(options);
   state.mode = options.replayFile ? "replay" : "live";
   state.status = "starting";
@@ -26,10 +50,7 @@ async function main() {
 
   const server = http.createServer((req, res) => routeRequest(req, res, state));
   const startSource = () => {
-    const source = options.replayFile
-      ? startReplay(options, state, (code, signal) => finishSource(state, code, signal))
-      : startTracer(options, state, (code, signal) => finishSource(state, code, signal));
-    state.source = source;
+    beginSource(state, options);
   };
 
   const announceListening = () => {
@@ -239,6 +260,9 @@ function createState() {
     status: "starting",
     progress: { emitted: 0, total: 0 },
     branding: null,
+    library: [],
+    activeLibraryId: null,
+    sourceGeneration: 0,
     replay: {
       supported: false,
       paused: false,
@@ -248,6 +272,226 @@ function createState() {
     },
     source: null
   };
+}
+
+function defaultReplayState() {
+  return {
+    supported: false,
+    paused: false,
+    speed: 1,
+    stepSize: 8,
+    ended: false
+  };
+}
+
+function beginSource(state, options) {
+  const generation = state.sourceGeneration + 1;
+  state.sourceGeneration = generation;
+  state.source = null;
+  state.activeLibraryId = options.libraryId || null;
+  state.command = formatSourceLabel(options);
+  state.mode = options.replayFile ? "replay" : "live";
+  state.status = "running";
+  state.tracerEnded = false;
+  state.exitCode = null;
+  state.exitSignal = null;
+  state.branding = null;
+  state.progress = { emitted: 0, total: 0 };
+  state.replay = defaultReplayState();
+  clearTraceState(state);
+
+  const source = options.replayFile
+    ? startReplay(options, state, generation, (code, signal) => finishSource(state, generation, code, signal))
+    : startTracer(options, state, generation, (code, signal) => finishSource(state, generation, code, signal));
+  state.source = source;
+}
+
+function discoverReplayLibrary() {
+  const entries = [];
+  const seen = new Set();
+
+  for (const entry of discoverBundledReplayEntries()) {
+    if (seen.has(entry.replayFile)) {
+      continue;
+    }
+    seen.add(entry.replayFile);
+    entries.push(entry);
+  }
+
+  for (const entry of discoverRecordedReplayEntries()) {
+    if (seen.has(entry.replayFile)) {
+      continue;
+    }
+    seen.add(entry.replayFile);
+    entries.push(entry);
+  }
+
+  return entries;
+}
+
+function discoverBundledReplayEntries() {
+  const roots = bundledReplayRoots();
+  const entries = [];
+
+  for (const descriptor of BUNDLED_REPLAYS) {
+    for (const root of roots) {
+      const replayFile = path.join(root, descriptor.fileName);
+      if (!fs.existsSync(replayFile)) {
+        continue;
+      }
+      const summary = summarizeReplayFile(replayFile);
+      if (!summary) {
+        continue;
+      }
+      entries.push({
+        id: descriptor.id,
+        title: descriptor.title,
+        detail: descriptor.detail,
+        source: "bundled",
+        demoName: summary.demoName || descriptor.demoName,
+        replayFile,
+        totalRecords: summary.totalRecords
+      });
+      break;
+    }
+  }
+
+  return entries;
+}
+
+function discoverRecordedReplayEntries() {
+  const entries = [];
+
+  for (const root of repoRootCandidates()) {
+    for (const replayFile of findReplayLogFiles(root)) {
+      const summary = summarizeReplayFile(replayFile);
+      if (!summary) {
+        continue;
+      }
+      const label = summary.demoName ? humanizeDemoName(summary.demoName) : path.basename(replayFile);
+      const relativePath = path.relative(root, replayFile) || path.basename(replayFile);
+      const recordLabel = summary.totalRecords === 1 ? "record" : "records";
+      entries.push({
+        id: `log:${replayFile}`,
+        title: label,
+        detail: `Recorded log · ${relativePath} · ${summary.totalRecords} ${recordLabel}`,
+        source: "recorded",
+        demoName: summary.demoName || null,
+        replayFile,
+        totalRecords: summary.totalRecords
+      });
+    }
+  }
+
+  return entries.sort((left, right) => String(right.replayFile).localeCompare(String(left.replayFile)));
+}
+
+function bundledReplayRoots() {
+  const roots = new Set();
+  roots.add(path.resolve(__dirname, "..", "demo-library"));
+
+  for (const repoRoot of repoRootCandidates()) {
+    roots.add(path.join(repoRoot, "crates", "ebpf-tracker-viewer", "demo-library"));
+  }
+
+  return [...roots];
+}
+
+function repoRootCandidates() {
+  const candidates = new Set();
+  const probeRoots = [
+    process.cwd(),
+    path.resolve(__dirname, "..", "..", ".."),
+    path.resolve(__dirname, "..", "..", "..", "..")
+  ];
+
+  for (const probeRoot of probeRoots) {
+    if (isRepoRoot(probeRoot)) {
+      candidates.add(probeRoot);
+    }
+  }
+
+  return [...candidates];
+}
+
+function isRepoRoot(root) {
+  try {
+    return fs.statSync(path.join(root, "Cargo.toml")).isFile() &&
+      fs.statSync(path.join(root, "examples")).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+function findReplayLogFiles(repoRoot) {
+  const entries = [];
+  const rootLogs = path.join(repoRoot, "logs");
+  entries.push(...listLogFiles(rootLogs));
+
+  const examplesDir = path.join(repoRoot, "examples");
+  if (!fs.existsSync(examplesDir)) {
+    return entries;
+  }
+
+  for (const child of fs.readdirSync(examplesDir, { withFileTypes: true })) {
+    if (!child.isDirectory()) {
+      continue;
+    }
+    entries.push(...listLogFiles(path.join(examplesDir, child.name, "logs")));
+  }
+
+  return entries;
+}
+
+function listLogFiles(directory) {
+  try {
+    return fs.readdirSync(directory)
+      .filter((name) => name.endsWith(".log"))
+      .map((name) => path.join(directory, name));
+  } catch {
+    return [];
+  }
+}
+
+function summarizeReplayFile(replayFile) {
+  let totalRecords = 0;
+  let demoName = null;
+
+  try {
+    const text = fs.readFileSync(replayFile, "utf8");
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        continue;
+      }
+      let record;
+      try {
+        record = JSON.parse(trimmed);
+      } catch {
+        continue;
+      }
+      totalRecords += 1;
+      if (!demoName && record.type === "session" && record.demo_name) {
+        demoName = String(record.demo_name);
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  if (totalRecords === 0) {
+    return null;
+  }
+
+  return { totalRecords, demoName };
+}
+
+function humanizeDemoName(name) {
+  return String(name || "")
+    .split(/[-_]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 async function findReusableViewer(options, desiredCommand, desiredMode) {
@@ -323,7 +567,8 @@ function normalizeCommandPart(value, index) {
   return text;
 }
 
-function startTracer(options, state, onEnd) {
+function startTracer(options, state, generation, onEnd) {
+  const isActive = () => generation === state.sourceGeneration;
   const [program, ...programArgs] = options.command;
   const child = spawn(program, programArgs, {
     stdio: ["ignore", "pipe", "pipe"],
@@ -332,6 +577,9 @@ function startTracer(options, state, onEnd) {
 
   let stdoutBuffer = "";
   child.stdout.on("data", (chunk) => {
+    if (!isActive()) {
+      return;
+    }
     stdoutBuffer += chunk.toString("utf8");
     const lines = stdoutBuffer.split(/\r?\n/);
     stdoutBuffer = lines.pop() || "";
@@ -341,16 +589,25 @@ function startTracer(options, state, onEnd) {
   });
 
   child.stderr.on("data", (chunk) => {
+    if (!isActive()) {
+      return;
+    }
     const text = chunk.toString("utf8");
     broadcast(state, "stderr", { text });
   });
 
   child.on("error", (error) => {
+    if (!isActive()) {
+      return;
+    }
     broadcast(state, "status", { status: "error", message: error.message });
     onEnd(1, null);
   });
 
   child.on("close", (code, signal) => {
+    if (!isActive()) {
+      return;
+    }
     if (stdoutBuffer.trim()) {
       handleTraceLine(stdoutBuffer, state);
     }
@@ -370,7 +627,8 @@ function startTracer(options, state, onEnd) {
   };
 }
 
-function startReplay(options, state, onEnd) {
+function startReplay(options, state, generation, onEnd) {
+  const isActive = () => generation === state.sourceGeneration;
   const replayRecords = loadReplayRecords(options.replayFile, options.focusComm);
   state.progress.total = replayRecords.length;
   state.replay.supported = true;
@@ -406,6 +664,9 @@ function startReplay(options, state, onEnd) {
   };
 
   const publishReplayState = () => {
+    if (!isActive()) {
+      return;
+    }
     state.progress.emitted = index;
     state.progress.total = replayRecords.length;
     state.replay = {
@@ -427,6 +688,9 @@ function startReplay(options, state, onEnd) {
   };
 
   const rebuildTo = (targetIndex) => {
+    if (!isActive()) {
+      return;
+    }
     clearTraceState(state);
     replayClockStartMs = state.startedAt;
     index = 0;
@@ -447,7 +711,7 @@ function startReplay(options, state, onEnd) {
   };
 
   const scheduleNext = (overrideDelayMs) => {
-    if (stopped || paused || ended) {
+    if (!isActive() || stopped || paused || ended) {
       return;
     }
     clearTimer();
@@ -459,6 +723,9 @@ function startReplay(options, state, onEnd) {
   };
 
   const resetReplay = ({ autoPlay }) => {
+    if (!isActive()) {
+      return;
+    }
     clearTimer();
     ended = false;
     paused = !autoPlay;
@@ -474,7 +741,7 @@ function startReplay(options, state, onEnd) {
   };
 
   const emitOne = () => {
-    if (stopped || ended) {
+    if (!isActive() || stopped || ended) {
       return false;
     }
     if (index >= replayRecords.length) {
@@ -501,7 +768,7 @@ function startReplay(options, state, onEnd) {
   };
 
   const tick = () => {
-    if (stopped) {
+    if (!isActive() || stopped) {
       return;
     }
     if (paused || ended) {
@@ -519,7 +786,9 @@ function startReplay(options, state, onEnd) {
     stop(signal) {
       stopped = true;
       clearTimer();
-      onEnd(null, signal === "SIGINT" ? "SIGINT" : "SIGTERM");
+      if (isActive()) {
+        onEnd(null, signal === "SIGINT" ? "SIGINT" : "SIGTERM");
+      }
     },
     control(action, payload = {}) {
       switch (action) {
@@ -613,8 +882,8 @@ function startReplay(options, state, onEnd) {
   };
 }
 
-function finishSource(state, code, signal) {
-  if (state.tracerEnded) {
+function finishSource(state, generation, code, signal) {
+  if (generation !== state.sourceGeneration || state.tracerEnded) {
     return;
   }
   state.exitCode = code;
@@ -635,7 +904,7 @@ function formatSourceLabel(options) {
   if (options.replayFile) {
     const pieces = [
       "replay",
-      options.replayFile
+      options.replayLabel || options.replayFile
     ];
     if (options.focusComm) {
       pieces.push(`focus=${options.focusComm}`);
@@ -833,8 +1102,50 @@ function buildSnapshot(state) {
     status: state.status,
     progress: state.progress,
     branding: state.branding,
+    library: state.library.map((entry) => ({
+      id: entry.id,
+      title: entry.title,
+      detail: entry.detail,
+      source: entry.source,
+      demoName: entry.demoName,
+      totalRecords: entry.totalRecords
+    })),
+    activeLibraryId: state.activeLibraryId,
     replay: state.replay
   };
+}
+
+function loadLibraryEntry(state, entryId) {
+  const entry = state.library.find((candidate) => candidate.id === entryId);
+  if (!entry) {
+    return { ok: false, message: `unknown library entry: ${entryId}` };
+  }
+
+  if (state.source && typeof state.source.stop === "function") {
+    state.source.stop("SIGTERM");
+  }
+
+  const options = {
+    replayFile: entry.replayFile,
+    replayLabel: entry.title,
+    replaySpeed: 1,
+    replayIntervalMs: null,
+    focusComm: null,
+    libraryId: entry.id
+  };
+
+  beginSource(state, options);
+  broadcast(state, "snapshot", buildSnapshot(state));
+  broadcast(state, "status", {
+    status: state.status,
+    command: state.command,
+    mode: state.mode,
+    progress: state.progress,
+    replay: state.replay,
+    url: state.url
+  });
+
+  return { ok: true, entryId: entry.id, title: entry.title };
 }
 
 function routeRequest(req, res, state) {
@@ -888,6 +1199,16 @@ function routeRequest(req, res, state) {
       const action = String(payload.action || "");
       if (!action) {
         respondJson(res, 400, { ok: false, message: "missing control action" });
+        return;
+      }
+      if (action === "load_library_entry") {
+        const entryId = String(payload.id || "");
+        if (!entryId) {
+          respondJson(res, 400, { ok: false, message: "missing library entry id" });
+          return;
+        }
+        const result = loadLibraryEntry(state, entryId);
+        respondJson(res, result.ok ? 200 : 404, result);
         return;
       }
       if (!state.source || typeof state.source.control !== "function") {
@@ -1193,6 +1514,61 @@ function renderHtml() {
 
       .transport-deck.disabled {
         opacity: 0.58;
+      }
+
+      .library-box {
+        display: grid;
+        gap: 10px;
+        margin-top: 6px;
+        padding-top: 14px;
+        border-top: 1px solid rgba(60, 255, 20, 0.12);
+      }
+
+      .library-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        align-items: baseline;
+      }
+
+      .library-head small {
+        color: var(--muted);
+      }
+
+      .library-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .library-entry {
+        width: 100%;
+        text-align: left;
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: rgba(8, 14, 24, 0.86);
+        border: 1px solid rgba(123, 255, 185, 0.14);
+        color: var(--text);
+        cursor: pointer;
+      }
+
+      .library-entry strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 0.96rem;
+      }
+
+      .library-entry small {
+        display: block;
+        color: var(--muted);
+      }
+
+      .library-entry.active {
+        border-color: rgba(114, 182, 255, 0.4);
+        box-shadow: inset 0 0 0 1px rgba(114, 182, 255, 0.18);
+      }
+
+      .library-entry:hover {
+        border-color: rgba(123, 255, 185, 0.28);
       }
 
       .transport-head {
@@ -1593,6 +1969,13 @@ function renderHtml() {
               </label>
             </div>
           </section>
+          <section class="library-box">
+            <div class="library-head">
+              <strong>Review Demos</strong>
+              <small>Bundled fixtures plus repo logs</small>
+            </div>
+            <div class="library-list" id="library-list"></div>
+          </section>
         </aside>
       </section>
 
@@ -1673,6 +2056,7 @@ function renderHtml() {
         storySignalDetail: document.getElementById("story-signal-detail"),
         storyOutcome: document.getElementById("story-outcome"),
         storyOutcomeDetail: document.getElementById("story-outcome-detail"),
+        libraryList: document.getElementById("library-list"),
         transportDeck: document.getElementById("transport-deck"),
         transportNote: document.getElementById("transport-note"),
         restartBtn: document.getElementById("restart-btn"),
@@ -1759,12 +2143,20 @@ function renderHtml() {
       els.jumpKnob.addEventListener("change", () =>
         sendControl("set_step_size", { value: Number(els.jumpKnob.value) })
       );
+      els.libraryList.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-library-id]");
+        if (!button) {
+          return;
+        }
+        sendControl("load_library_entry", { id: button.getAttribute("data-library-id") });
+      });
 
       function renderSnapshot(snapshot) {
         applyBranding(snapshot.branding);
         const focusedSnapshot = buildFocusedSnapshot(snapshot);
         const displayEvents = focusedSnapshot.recentEvents || [];
         const primary = focusedSnapshot.primaryProcess || "app";
+        renderLibrary(snapshot.library || [], snapshot.activeLibraryId || null);
         if (snapshot.command?.length) {
           els.commandBox.textContent = snapshot.command.join(" ");
         }
@@ -1868,6 +2260,21 @@ function renderHtml() {
           els.sponsorLink.hidden = true;
           els.sponsorLink.removeAttribute("href");
         }
+      }
+
+      function renderLibrary(entries, activeLibraryId) {
+        if (!entries.length) {
+          els.libraryList.innerHTML = '<div class="library-entry"><strong>No replay demos found yet.</strong><small>Run a demo with logging or use the bundled fixtures.</small></div>';
+          return;
+        }
+
+        els.libraryList.innerHTML = entries.map((entry) => {
+          const active = entry.id === activeLibraryId ? " active" : "";
+          return '<button class="library-entry' + active + '" type="button" data-library-id="' + escapeHtml(entry.id) + '">' +
+            '<strong>' + escapeHtml(entry.title) + '</strong>' +
+            '<small>' + escapeHtml(entry.detail) + '</small>' +
+          '</button>';
+        }).join("");
       }
 
       function addRainLine(event) {

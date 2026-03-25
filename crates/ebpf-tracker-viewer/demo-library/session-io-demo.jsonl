@@ -1,0 +1,9 @@
+{"type":"session","timestamp_unix_ms":1774500000000,"demo_name":"session-io-demo","product_name":"eBPF_tracker","product_tagline":"Trace the full command session, then replay it.","sponsor_name":"cargo-ebpf-tracker","sponsor_message":"Replayable syscall demos for Rust and Node.","sponsor_url":"https://github.com/givtaj/cargo-ebpf-tracker"}
+{"type":"syscall","timestamp_unix_ms":1774500000100,"kind":"open_at","comm":"cargo","pid":1008,"file":"/workspace/Cargo.toml"}
+{"type":"syscall","timestamp_unix_ms":1774500000200,"kind":"open_at","comm":"session-io-demo","pid":1008,"file":"input/message.txt"}
+{"type":"syscall","timestamp_unix_ms":1774500000300,"kind":"connect","comm":"session-io-demo","pid":1008,"fd":4}
+{"type":"syscall","timestamp_unix_ms":1774500000400,"kind":"open_at","comm":"session-io-demo","pid":1008,"file":"logs/session-summary.txt"}
+{"type":"syscall","timestamp_unix_ms":1774500000500,"kind":"write","comm":"session-io-demo","pid":1008,"bytes":239}
+{"type":"aggregate","timestamp_unix_ms":1774500000600,"metric":"connects","value":1}
+{"type":"aggregate","timestamp_unix_ms":1774500000600,"metric":"openat","value":3}
+{"type":"aggregate","timestamp_unix_ms":1774500000600,"metric":"writes","value":1}

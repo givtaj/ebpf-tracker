@@ -1,0 +1,11 @@
+{"type":"session","timestamp_unix_ms":1774502000000,"demo_name":"postcard-generator-node","product_name":"eBPF_tracker","product_tagline":"Trace the full command session, then replay it.","sponsor_name":"cargo-ebpf-tracker","sponsor_message":"Replayable syscall demos for Rust and Node.","sponsor_url":"https://github.com/givtaj/cargo-ebpf-tracker"}
+{"type":"syscall","timestamp_unix_ms":1774502000100,"kind":"open_at","comm":"node","pid":711,"file":"package.json"}
+{"type":"syscall","timestamp_unix_ms":1774502000200,"kind":"open_at","comm":"postcard-generator-node","pid":711,"file":"input/message.txt"}
+{"type":"syscall","timestamp_unix_ms":1774502000300,"kind":"open_at","comm":"postcard-generator-node","pid":711,"file":"templates/postcard.html.tpl"}
+{"type":"syscall","timestamp_unix_ms":1774502000400,"kind":"connect","comm":"postcard-generator-node","pid":711,"fd":5}
+{"type":"syscall","timestamp_unix_ms":1774502000500,"kind":"open_at","comm":"postcard-generator-node","pid":711,"file":"dist/postcard.svg"}
+{"type":"syscall","timestamp_unix_ms":1774502000600,"kind":"write","comm":"postcard-generator-node","pid":711,"bytes":1334}
+{"type":"syscall","timestamp_unix_ms":1774502000700,"kind":"open_at","comm":"postcard-generator-node","pid":711,"file":"dist/summary.json"}
+{"type":"syscall","timestamp_unix_ms":1774502000800,"kind":"write","comm":"postcard-generator-node","pid":711,"bytes":544}
+{"type":"aggregate","timestamp_unix_ms":1774502000900,"metric":"connects","value":1}
+{"type":"aggregate","timestamp_unix_ms":1774502000900,"metric":"writes","value":2}

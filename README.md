@@ -270,7 +270,7 @@ If you have cloned this repository, the workspace also includes:
 - `cargo dataset`: repo-local dataset writer for JSONL streams and replay logs
 - `cargo otel`: repo-local OTLP exporter for the JSONL stream
 - `cargo jaeger`: repo-local Jaeger helper commands
-- `cargo viewer`: repo-local dashboard and replay viewer crate
+- `cargo viewer`: repo-local dashboard and replay viewer commands
 
 Dataset example from a local clone:
 
@@ -329,7 +329,7 @@ Then open `http://127.0.0.1:16686`.
 
 ## Examples In This Repository
 
-If you have cloned this repository, the first example worth running is
+If you have cloned this repository, a good first example is
 [`examples/session-io-demo`](./examples/session-io-demo/README.md).
 
 All examples are indexed in

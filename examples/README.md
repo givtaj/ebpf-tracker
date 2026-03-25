@@ -111,9 +111,9 @@ cargo demo --emit jsonl session-io-demo | cargo otel --target jaeger --service-n
 
 For `session-io-demo`, the app-level signal to look for is usually:
 
-- `open_at` on `input/message.txt`
+- `openat` on `input/message.txt`
 - `connect` from `session-io-demo`
-- `open_at` on `logs/session-summary.txt`
+- `openat` on `logs/session-summary.txt`
 - `write` from `session-io-demo`
 
 ## Available Examples

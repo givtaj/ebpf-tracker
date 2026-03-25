@@ -53,7 +53,7 @@ What you should see:
 - one important line in the trace is:
 
 ```json
-{"type":"syscall","kind":"open_at","comm":"payments_engine","file":"transactions.csv",...}
+{"type":"syscall","kind":"openat","comm":"payments_engine","file":"transactions.csv",...}
 ```
 
 You should also see `write` events from `payments_engine` when it emits the
@@ -66,7 +66,7 @@ like this:
 
 ```json
 {"type":"syscall","kind":"execve","comm":"payments_engine",...}
-{"type":"syscall","kind":"open_at","comm":"payments_engine","file":"transactions.csv",...}
+{"type":"syscall","kind":"openat","comm":"payments_engine","file":"transactions.csv",...}
 {"type":"syscall","kind":"write","comm":"payments_engine","bytes":10,...}
 {"type":"syscall","kind":"write","comm":"payments_engine","bytes":18,...}
 {"type":"syscall","kind":"write","comm":"payments_engine","bytes":16,...}

@@ -1,9 +1,9 @@
 # ebpf-tracker-viewer
 
-Viewer extension crate for `ebpf-tracker`.
+Viewer crate for `ebpf-tracker`.
 
 This crate owns the live matrix dashboard and replay viewer assets. The root
-CLI can launch it for `--dashboard`, and it can also be run directly to replay
+CLI launches it for `--dashboard`, and it can also be run directly to replay
 stored JSONL or mixed trace logs:
 
 ```bash

@@ -20,6 +20,7 @@ This file tracks notable repo changes in progress on this branch.
 
 - Moved the live trace matrix viewer asset out of `scripts/` into `crates/ebpf-tracker-viewer`.
 - Wired dashboard mode to preserve replayable logs and documented replay via the viewer crate.
+- Bundled small replay samples into the viewer crate and refreshed the README/docs wording around the current event schema.
 - Moved session-trace construction into `ebpf-tracker-events` so multiple consumers can share the same trace summary model.
 - Tightened viewer-side noise filtering for infra and toolchain file paths in the live matrix dashboard.
 - Updated examples and docs to describe replay flow, manifest-driven demos, and branded demo artifacts.

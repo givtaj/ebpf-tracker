@@ -1,6 +1,6 @@
 # ebpf-tracker-dataset
 
-Local dataset consumer for `ebpf-tracker` JSONL streams and replay logs.
+Dataset writer and analyzer for `ebpf-tracker` JSONL streams and replay logs.
 
 Examples:
 
