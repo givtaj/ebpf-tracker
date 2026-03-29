@@ -1,6 +1,8 @@
 /target
 .DS_Store
 logs/
+datasets/
+trace.jsonl
 ebpf-tracker.toml
 !examples/**/ebpf-tracker.toml
 probes/*.local.bt

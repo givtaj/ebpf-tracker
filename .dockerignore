@@ -1,0 +1,9 @@
+/.git
+/target
+/logs
+/datasets
+/trace.jsonl
+/.scratch
+/tmp
+/examples/**/logs
+/examples/**/target
