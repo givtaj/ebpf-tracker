@@ -84,6 +84,7 @@ pub fn parse_perf_trace_line(line: &str) -> Option<ParsedPerfTraceEvent> {
     let (_, remainder) = trimmed.split_once(": ")?;
     let (process, syscall) = remainder.split_once(' ')?;
     let (comm, pid) = parse_process(process)?;
+    let syscall = normalize_perf_syscall_segment(syscall);
     let open_paren = syscall.find('(')?;
     let close_paren = syscall.rfind(')')?;
     if close_paren <= open_paren {
@@ -101,6 +102,27 @@ pub fn parse_perf_trace_line(line: &str) -> Option<ParsedPerfTraceEvent> {
         bytes: parse_bytes_arg(kind, args),
         fd: parse_fd_arg(kind, args),
     })
+}
+
+fn normalize_perf_syscall_segment(raw_syscall: &str) -> String {
+    let mut syscall = raw_syscall.trim();
+    if let Some((_, tail)) = syscall.rsplit_once(": ") {
+        if syscall.contains("[continued]") || syscall.starts_with("...") {
+            syscall = tail.trim();
+        }
+    }
+    if let Some((head, _)) = syscall.rsplit_once(" = ") {
+        syscall = head.trim();
+    }
+
+    let mut normalized = syscall.to_string();
+    while normalized.ends_with(')')
+        && normalized.matches(')').count() > normalized.matches('(').count()
+    {
+        normalized.pop();
+    }
+
+    normalized
 }
 
 pub fn stream_record_for_perf_trace_line(line: &str) -> Option<StreamRecord> {
@@ -345,6 +367,18 @@ mod tests {
     }
 
     #[test]
+    fn parses_perf_write_line_with_len_and_sockfd_aliases() {
+        let parsed = parse_perf_trace_line(
+            "991.447 ( 0.021 ms): cargo/723 write(sockfd: 2, buf: 0xffff8f6f, len: 42) = 42",
+        )
+        .expect("write line should parse");
+
+        assert_eq!(parsed.kind, EventKind::Write);
+        assert_eq!(parsed.fd, Some(2));
+        assert_eq!(parsed.bytes, Some(42));
+    }
+
+    #[test]
     fn parses_perf_connect_line() {
         let parsed = parse_perf_trace_line(
             "991.448 ( 0.031 ms): session-io-demo/723 connect(fd: 4, usrvaddr: 0xffff8f7c, addrlen: 16) = 0",
@@ -353,6 +387,17 @@ mod tests {
 
         assert_eq!(parsed.kind, EventKind::Connect);
         assert_eq!(parsed.fd, Some(4));
+    }
+
+    #[test]
+    fn parses_perf_openat_line_with_pathname_alias() {
+        let parsed = parse_perf_trace_line(
+            "2272.992 ( 0.037 ms): gnome-shell/1370 openat(dfd: CWD, pathname: \"/proc/self/stat\", flags: CLOEXEC) = 31",
+        )
+        .expect("perf trace line should parse");
+
+        assert_eq!(parsed.kind, EventKind::OpenAt);
+        assert_eq!(parsed.file.as_deref(), Some("/proc/self/stat"));
     }
 
     #[test]
@@ -388,6 +433,53 @@ mod tests {
     }
 
     #[test]
+    fn parses_continued_perf_execve_line_shape_from_runtime_smoke() {
+        let record = stream_record_for_perf_trace_line_at(
+            "? (         ): true/956  ... [continued]: execve())                                           = 0",
+            777,
+        )
+        .expect("continued execve line should become a stream record");
+
+        match record {
+            StreamRecord::Syscall {
+                timestamp_unix_ms,
+                kind,
+                comm,
+                pid,
+                file,
+                bytes,
+                fd,
+            } => {
+                assert_eq!(timestamp_unix_ms, 777);
+                assert_eq!(kind, EventKind::Execve);
+                assert_eq!(comm, "true");
+                assert_eq!(pid, 956);
+                assert_eq!(file, None);
+                assert_eq!(bytes, None);
+                assert_eq!(fd, None);
+            }
+            StreamRecord::Aggregate { .. } | StreamRecord::Session { .. } => {
+                panic!("expected syscall record")
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_malformed_perf_lines() {
+        for line in [
+            "",
+            "plain text",
+            "991.450 ( 0.052 ms): cargo/723 execve = 0",
+            "991.450 ( 0.052 ms): cargo/723 unknown(foo: bar) = 0",
+        ] {
+            assert!(
+                parse_perf_trace_line(line).is_none(),
+                "line should not parse: {line:?}"
+            );
+        }
+    }
+
+    #[test]
     fn drops_pointer_like_file_arguments() {
         let record = stream_record_for_perf_trace_line_at(
             "991.450 ( 0.052 ms): cargo/723 openat(dfd: CWD, filename: 0x16601ab0) = -1 ENOENT (No such file or directory)",
@@ -401,6 +493,60 @@ mod tests {
                 panic!("expected syscall record")
             }
         }
+    }
+
+    #[test]
+    fn merge_combines_sessions_and_is_empty_tracks_counts() {
+        let mut first = PerfTraceSession::default();
+        assert!(first.is_empty());
+        first.observe(
+            &stream_record_for_perf_trace_line_at(
+                "1.0 ( 0.01 ms): cargo/7 execve(\"cargo\", argv: 0x1, envp: 0x2) = 0",
+                1,
+            )
+            .expect("execve line should parse"),
+        );
+        assert!(!first.is_empty());
+
+        let mut second = PerfTraceSession::default();
+        second.observe(
+            &stream_record_for_perf_trace_line_at(
+                "1.1 ( 0.01 ms): cargo/7 write(fd: 1, buf: 0x2, count: 10) = 10",
+                2,
+            )
+            .expect("write line should parse"),
+        );
+        second.observe(
+            &stream_record_for_perf_trace_line_at(
+                "1.2 ( 0.01 ms): cargo/7 connect(fd: 4, usrvaddr: 0x3, addrlen: 16) = 0",
+                3,
+            )
+            .expect("connect line should parse"),
+        );
+
+        first.merge(&second);
+
+        let aggregates = first.aggregate_records_at(9);
+        assert_eq!(
+            aggregates,
+            vec![
+                StreamRecord::Aggregate {
+                    timestamp_unix_ms: 9,
+                    metric: "execve".to_string(),
+                    value: 1,
+                },
+                StreamRecord::Aggregate {
+                    timestamp_unix_ms: 9,
+                    metric: "writes".to_string(),
+                    value: 1,
+                },
+                StreamRecord::Aggregate {
+                    timestamp_unix_ms: 9,
+                    metric: "connects".to_string(),
+                    value: 1,
+                },
+            ]
+        );
     }
 
     #[test]

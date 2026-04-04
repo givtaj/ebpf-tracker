@@ -32,16 +32,16 @@ fn main() {
         render_summary_json(&title, &message, &generated_at, &server_reply, &branding);
     fs::write("dist/summary.json", &summary_json).expect("failed to write dist/summary.json");
 
-    let html = render_html(
-        &template,
-        &title,
-        &message,
-        &generated_at,
-        &server_reply,
-        &summary_json,
-        &palette,
-        &branding,
-    );
+    let html = render_html(&RenderHtmlContext {
+        template: &template,
+        title: &title,
+        message: &message,
+        generated_at: &generated_at,
+        server_reply: &server_reply,
+        summary_json: &summary_json,
+        palette: &palette,
+        branding: &branding,
+    });
     fs::write("dist/postcard.html", html).expect("failed to write dist/postcard.html");
 
     println!("generated dist/postcard.html");
@@ -86,6 +86,17 @@ struct DemoBranding {
     sponsor_name: String,
     sponsor_message: String,
     sponsor_url: String,
+}
+
+struct RenderHtmlContext<'a> {
+    template: &'a str,
+    title: &'a str,
+    message: &'a str,
+    generated_at: &'a str,
+    server_reply: &'a str,
+    summary_json: &'a str,
+    palette: &'a BTreeMap<String, String>,
+    branding: &'a DemoBranding,
 }
 
 fn load_demo_branding() -> DemoBranding {
@@ -237,40 +248,37 @@ fn render_svg(
     )
 }
 
-fn render_html(
-    template: &str,
-    title: &str,
-    message: &str,
-    generated_at: &str,
-    server_reply: &str,
-    summary_json: &str,
-    palette: &BTreeMap<String, String>,
-    branding: &DemoBranding,
-) -> String {
+fn render_html(ctx: &RenderHtmlContext<'_>) -> String {
     let replacements = [
-        ("{{title}}", html_escape(title)),
-        ("{{message}}", html_escape(message)),
-        ("{{generated_at}}", html_escape(generated_at)),
-        ("{{server_reply}}", html_escape(server_reply)),
-        ("{{summary_json}}", html_escape(summary_json)),
-        ("{{paper}}", palette_value(palette, "paper").to_string()),
-        ("{{ink}}", palette_value(palette, "ink").to_string()),
-        ("{{accent}}", palette_value(palette, "accent").to_string()),
-        ("{{stamp}}", palette_value(palette, "stamp").to_string()),
-        ("{{shadow}}", palette_value(palette, "shadow").to_string()),
-        ("{{product_name}}", html_escape(&branding.product_name)),
+        ("{{title}}", html_escape(ctx.title)),
+        ("{{message}}", html_escape(ctx.message)),
+        ("{{generated_at}}", html_escape(ctx.generated_at)),
+        ("{{server_reply}}", html_escape(ctx.server_reply)),
+        ("{{summary_json}}", html_escape(ctx.summary_json)),
+        ("{{paper}}", palette_value(ctx.palette, "paper").to_string()),
+        ("{{ink}}", palette_value(ctx.palette, "ink").to_string()),
+        (
+            "{{accent}}",
+            palette_value(ctx.palette, "accent").to_string(),
+        ),
+        ("{{stamp}}", palette_value(ctx.palette, "stamp").to_string()),
+        (
+            "{{shadow}}",
+            palette_value(ctx.palette, "shadow").to_string(),
+        ),
+        ("{{product_name}}", html_escape(&ctx.branding.product_name)),
         (
             "{{product_tagline}}",
-            html_escape(&branding.product_tagline),
+            html_escape(&ctx.branding.product_tagline),
         ),
-        ("{{sponsor_name}}", html_escape(&branding.sponsor_name)),
+        ("{{sponsor_name}}", html_escape(&ctx.branding.sponsor_name)),
         (
             "{{sponsor_message}}",
-            html_escape(&branding.sponsor_message),
+            html_escape(&ctx.branding.sponsor_message),
         ),
     ];
 
-    let mut output = template.to_string();
+    let mut output = ctx.template.to_string();
     for (needle, value) in replacements {
         output = output.replace(needle, &value);
     }

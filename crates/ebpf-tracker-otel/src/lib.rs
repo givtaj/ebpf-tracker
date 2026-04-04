@@ -449,11 +449,7 @@ fn build_process_span(process: &ProcessTrace, trace_id: &[u8], parent_span_id: &
             int_key_value("ebpf.process.bytes_written", process.bytes_written as i64),
         ],
         dropped_attributes_count: 0,
-        events: process
-            .events
-            .iter()
-            .map(|event| build_process_event(event))
-            .collect(),
+        events: process.events.iter().map(build_process_event).collect(),
         dropped_events_count: 0,
         links: Vec::new(),
         dropped_links_count: 0,
