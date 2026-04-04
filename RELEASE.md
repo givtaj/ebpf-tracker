@@ -68,7 +68,7 @@ git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
 
-6. Push the tag and wait for the release workflow to publish the GitHub release.
+6. Push the tag and wait for the release workflow to publish the GitHub release. The publish job will still run if one matrix leg is cancelled, so a missing macOS runner will not block the Linux artifact from shipping.
 7. Verify the generated release notes and attached binary artifacts. Create the release manually only if the workflow fails.
 
 ## Artifact Sanity Checks
@@ -78,7 +78,7 @@ git push origin vX.Y.Z
   - `cargo install --path . --locked` for local clones
   - `cargo install --git https://github.com/givtaj/ebpf-tracker --locked` for GitHub installs
 - Confirm the root CLI still prints useful help and the binary name remains `ebpf-tracker`.
-- If artifacts are attached, verify their filenames include the release version and platform.
+- If artifacts are attached, verify the uploaded platform archives include the release version and platform. If only one platform artifact was produced, confirm that is the expected fallback release set.
 
 ## Post-Release Follow-Up
 

@@ -4,6 +4,10 @@ This file tracks notable repo changes in progress on this branch.
 
 ## Unreleased
 
+### Fixed
+
+- Switched the tag-driven release workflow to GitHub's current `macos-15-intel` hosted runner label so macOS release builds do not cancel before execution.
+
 ## v0.1.0 - 2026-04-04
 
 ### Added
