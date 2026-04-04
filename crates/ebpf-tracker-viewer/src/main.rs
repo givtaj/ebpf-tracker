@@ -63,7 +63,7 @@ fn print_usage() {
     );
     eprintln!("Usage: ebpf-tracker-viewer [--port <port>] [--host <host>] -- <command> [args...]");
     eprintln!("Starts the live trace viewer and opens the browser automatically.");
-    eprintln!("Without --replay, remaining args are traced through eBPF_tracker.");
+    eprintln!("Without --replay, remaining args are traced through ebpf-tracker.");
     eprintln!("Repository alias: cargo viewer --help");
     eprintln!("Example: cargo viewer --replay logs/ebpf-tracker-YYYYMMDD-HHMMSS.log");
     eprintln!(

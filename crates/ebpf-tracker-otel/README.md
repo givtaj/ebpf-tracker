@@ -37,13 +37,13 @@ cargo jaeger <up|down|status>
 Example:
 
 ```bash
-eBPF_tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name session-io-demo
+ebpf-tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name session-io-demo
 ```
 
 Hardened OTLP example:
 
 ```bash
-eBPF_tracker --emit jsonl cargo run | cargo otel --target otlp --endpoint http://127.0.0.1:4318 --timeout-seconds 15 --header authorization=Bearer-token
+ebpf-tracker --emit jsonl cargo run | cargo otel --target otlp --endpoint http://127.0.0.1:4318 --timeout-seconds 15 --header authorization=Bearer-token
 ```
 
 On success, the command prints a summary to `stderr` that includes the target,

@@ -561,7 +561,7 @@ mod tests {
     fn ingest_reader_writes_dataset_bundle() {
         let input = Cursor::new(
             concat!(
-                "{\"type\":\"session\",\"timestamp_unix_ms\":10,\"demo_name\":\"session-io-demo\",\"product_name\":\"eBPF_tracker\"}\n",
+                "{\"type\":\"session\",\"timestamp_unix_ms\":10,\"demo_name\":\"session-io-demo\",\"product_name\":\"ebpf-tracker\"}\n",
                 "{\"type\":\"syscall\",\"timestamp_unix_ms\":11,\"kind\":\"execve\",\"comm\":\"cargo\",\"pid\":7}\n",
                 "{\"type\":\"syscall\",\"timestamp_unix_ms\":12,\"kind\":\"connect\",\"comm\":\"session-io-demo\",\"pid\":9,\"fd\":4}\n",
                 "{\"type\":\"syscall\",\"timestamp_unix_ms\":13,\"kind\":\"write\",\"comm\":\"session-io-demo\",\"pid\":9,\"bytes\":42}\n",
@@ -606,7 +606,7 @@ mod tests {
         let output_root = temp_dir("records-bundle");
         let records = vec![
             serde_json::from_str::<StreamRecord>(
-                "{\"type\":\"session\",\"timestamp_unix_ms\":10,\"demo_name\":\"session-io-demo\",\"product_name\":\"eBPF_tracker\"}",
+                "{\"type\":\"session\",\"timestamp_unix_ms\":10,\"demo_name\":\"session-io-demo\",\"product_name\":\"ebpf-tracker\"}",
             )
             .expect("session record should parse"),
             serde_json::from_str::<StreamRecord>(

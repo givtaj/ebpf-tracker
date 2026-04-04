@@ -1,6 +1,6 @@
-# eBPF_tracker
+# ebpf-tracker
 
-`eBPF_tracker` is the installable CLI in this workspace. It wraps commands such
+`ebpf-tracker` is the installable CLI in this workspace. It wraps commands such
 as `cargo run` or `npm run`, runs them inside a Linux Docker runtime, and
 attaches tracing for the lifetime of that session.
 
@@ -16,7 +16,7 @@ belong in [`docs/cli.md`](./docs/cli.md).
 - can emit raw terminal output or JSONL event streams
 - can launch a repo-local dashboard and replay stored sessions
 
-If you run `eBPF_tracker cargo run`, you should expect to see the whole session:
+If you run `ebpf-tracker cargo run`, you should expect to see the whole session:
 `cargo`, `rustc`, linkers, and then your app. The same idea applies to Node
 commands such as `npm run <script>`.
 
@@ -26,7 +26,7 @@ examples and operational behavior.
 
 ## Workspace Map
 
-- **Root CLI (`eBPF_tracker`)**: installable command-line entry point, runtime orchestration, config loading, `demo`, `see`, and the experimental `attach` scaffold. Source lives under [`src/`](./src).
+- **Root CLI (`ebpf-tracker`)**: installable command-line entry point, runtime orchestration, config loading, `demo`, `see`, and the experimental `attach` scaffold. Source lives under [`src/`](./src).
 - **`crates/ebpf-tracker-events`**: shared event schema, line parsers, and session aggregation helpers used across the workspace. [README](./crates/ebpf-tracker-events/README.md)
 - **`crates/ebpf-tracker-dataset`**: dataset bundle writer and analyzer for JSONL streams and replay logs. [README](./crates/ebpf-tracker-dataset/README.md)
 - **`crates/ebpf-tracker-otel`**: OTLP exporter plus local Jaeger helper commands. [README](./crates/ebpf-tracker-otel/README.md)

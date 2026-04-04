@@ -58,10 +58,10 @@ Without `--replay`, the wrapper traces a command session through
 `ebpf-tracker`. If no command is supplied, it defaults to:
 
 ```bash
-./target/debug/eBPF_tracker demo session-io-demo
+./target/debug/ebpf-tracker demo session-io-demo
 ```
 
-If the command starts with `eBPF_tracker` or `./target/debug/eBPF_tracker`,
+If the command starts with `ebpf-tracker` or `./target/debug/ebpf-tracker`,
 the wrapper preserves that command and injects JSONL logging defaults when they
 are missing. The `demo` shorthand is also rewritten to the repo-local tracker
 binary.

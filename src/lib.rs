@@ -135,7 +135,7 @@ impl DemoBranding {
         let product_name = self
             .product_name
             .clone()
-            .unwrap_or_else(|| "eBPF_tracker".to_string());
+            .unwrap_or_else(|| "ebpf-tracker".to_string());
         Some(StreamRecord::Session {
             timestamp_unix_ms: current_timestamp_millis(),
             demo_name: example_name.to_string(),
@@ -270,36 +270,36 @@ impl RuntimeSelection {
 
 fn print_usage() {
     eprintln!(
-        "Usage: eBPF_tracker [--probe <file-or-name>] [--config <path>] [--log-enable] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--runtime <auto|rust|node>] [--dashboard] [--dashboard-port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [--intelligence-endpoint <url>] <command> [args...]"
+        "Usage: ebpf-tracker [--probe <file-or-name>] [--config <path>] [--log-enable] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--runtime <auto|rust|node>] [--dashboard] [--dashboard-port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [--intelligence-endpoint <url>] <command> [args...]"
     );
-    eprintln!("Usage: eBPF_tracker attach <docker|k8s|aws-eks|aws-ecs> [--backend <inspektor-gadget|tetragon>] [--namespace <ns>] [--selector <label-selector>] [--pod <name>] [--cluster <name>] [--region <aws-region>] [--service <name>] [--task <id>] [--container <name>] [experimental scaffold]");
-    eprintln!("Usage: eBPF_tracker demo [--list] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--dashboard] [--dashboard-port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [example-name]");
-    eprintln!("Usage: eBPF_tracker see [--port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [example-name]");
+    eprintln!("Usage: ebpf-tracker attach <docker|k8s|aws-eks|aws-ecs> [--backend <inspektor-gadget|tetragon>] [--namespace <ns>] [--selector <label-selector>] [--pod <name>] [--cluster <name>] [--region <aws-region>] [--service <name>] [--task <id>] [--container <name>] [experimental scaffold]");
+    eprintln!("Usage: ebpf-tracker demo [--list] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--dashboard] [--dashboard-port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [example-name]");
+    eprintln!("Usage: ebpf-tracker see [--port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [example-name]");
     eprintln!("Default emit mode: raw");
     eprintln!("Default transport: bpftrace");
     eprintln!("Default runtime: auto");
     eprintln!("Default dashboard port: {DEFAULT_DASHBOARD_PORT}");
-    eprintln!("Example: eBPF_tracker cargo run");
-    eprintln!("Example: eBPF_tracker npm test");
-    eprintln!("Example: eBPF_tracker --config ebpf-tracker.toml cargo run");
-    eprintln!("Example: eBPF_tracker --probe execve.bt cargo run");
-    eprintln!("Example: eBPF_tracker --probe ./probes/custom.bt cargo run");
-    eprintln!("Example: eBPF_tracker --log-enable cargo test");
-    eprintln!("Example: eBPF_tracker --emit jsonl cargo run");
-    eprintln!("Example: eBPF_tracker --transport perf --emit jsonl cargo run");
-    eprintln!("Example: eBPF_tracker --runtime node /bin/sh -lc \"npm run dev\"");
-    eprintln!("Example: eBPF_tracker attach k8s --selector app=payments");
-    eprintln!("Example: eBPF_tracker attach aws-eks --cluster prod --region us-east-1 --selector app=payments");
-    eprintln!("Example: eBPF_tracker --dashboard cargo run");
-    eprintln!("Example: eBPF_tracker see --intelligence-dataset session-io-demo");
-    eprintln!("Example: eBPF_tracker --dashboard --intelligence-dataset cargo run");
-    eprintln!("Example: eBPF_tracker demo --dashboard session-io-demo");
-    eprintln!("Example: eBPF_tracker see");
-    eprintln!("Example: eBPF_tracker see postcard-generator-rust");
-    eprintln!("Repository demo mode: eBPF_tracker demo --list");
-    eprintln!("Repository demo example: eBPF_tracker demo --emit jsonl session-io-demo");
+    eprintln!("Example: ebpf-tracker cargo run");
+    eprintln!("Example: ebpf-tracker npm test");
+    eprintln!("Example: ebpf-tracker --config ebpf-tracker.toml cargo run");
+    eprintln!("Example: ebpf-tracker --probe execve.bt cargo run");
+    eprintln!("Example: ebpf-tracker --probe ./probes/custom.bt cargo run");
+    eprintln!("Example: ebpf-tracker --log-enable cargo test");
+    eprintln!("Example: ebpf-tracker --emit jsonl cargo run");
+    eprintln!("Example: ebpf-tracker --transport perf --emit jsonl cargo run");
+    eprintln!("Example: ebpf-tracker --runtime node /bin/sh -lc \"npm run dev\"");
+    eprintln!("Example: ebpf-tracker attach k8s --selector app=payments");
+    eprintln!("Example: ebpf-tracker attach aws-eks --cluster prod --region us-east-1 --selector app=payments");
+    eprintln!("Example: ebpf-tracker --dashboard cargo run");
+    eprintln!("Example: ebpf-tracker see --intelligence-dataset session-io-demo");
+    eprintln!("Example: ebpf-tracker --dashboard --intelligence-dataset cargo run");
+    eprintln!("Example: ebpf-tracker demo --dashboard session-io-demo");
+    eprintln!("Example: ebpf-tracker see");
+    eprintln!("Example: ebpf-tracker see postcard-generator-rust");
+    eprintln!("Repository demo mode: ebpf-tracker demo --list");
+    eprintln!("Repository demo example: ebpf-tracker demo --emit jsonl session-io-demo");
     eprintln!("The see subcommand is a shortcut for the dashboard demo experience.");
-    eprintln!("The demo subcommand expects a local clone of cargo-ebpf-tracker.");
+    eprintln!("The demo subcommand expects a local clone of ebpf-tracker.");
     eprintln!(
         "The attach subcommand is experimental scaffold/plan mode and does not start tracing yet."
     );
@@ -1527,7 +1527,7 @@ fn repo_root_from(start_dir: &Path) -> Result<PathBuf, String> {
     }
 
     Err(
-        "demo mode requires a local cargo-ebpf-tracker checkout or a repo-built eBPF_tracker binary"
+        "demo mode requires a local ebpf-tracker checkout or a repo-built ebpf-tracker binary"
             .to_string(),
     )
 }
@@ -1928,11 +1928,11 @@ mod tests {
             concat!(
                 "runtime = \"rust\"\n",
                 "command = [\"cargo\", \"run\"]\n",
-                "product_name = \"eBPF_tracker\"\n",
+                "product_name = \"ebpf-tracker\"\n",
                 "product_tagline = \"Trace the full command session\"\n",
-                "sponsor_name = \"cargo-ebpf-tracker\"\n",
+                "sponsor_name = \"ebpf-tracker\"\n",
                 "sponsor_message = \"Replayable syscall demos\"\n",
-                "sponsor_url = \"https://github.com/givtaj/cargo-ebpf-tracker\"\n"
+                "sponsor_url = \"https://github.com/givtaj/ebpf-tracker\"\n"
             ),
         )
         .expect("manifest should be written");
@@ -1940,7 +1940,7 @@ mod tests {
         let manifest = load_demo_manifest(&temp_dir).expect("manifest should load");
         assert_eq!(
             manifest.branding.product_name.as_deref(),
-            Some("eBPF_tracker")
+            Some("ebpf-tracker")
         );
         assert_eq!(
             manifest.branding.product_tagline.as_deref(),
@@ -1948,7 +1948,7 @@ mod tests {
         );
         assert_eq!(
             manifest.branding.sponsor_name.as_deref(),
-            Some("cargo-ebpf-tracker")
+            Some("ebpf-tracker")
         );
 
         let _ = fs::remove_dir_all(temp_dir);

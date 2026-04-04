@@ -55,18 +55,18 @@ function readPalette(path) {
 
 function loadDemoBranding() {
   return {
-    productName: process.env.EBPF_TRACKER_DEMO_PRODUCT_NAME || "eBPF_tracker",
+    productName: process.env.EBPF_TRACKER_DEMO_PRODUCT_NAME || "ebpf-tracker",
     productTagline:
       process.env.EBPF_TRACKER_DEMO_PRODUCT_TAGLINE ||
       "Trace the full command session, then replay it.",
     sponsorName:
-      process.env.EBPF_TRACKER_DEMO_SPONSOR_NAME || "cargo-ebpf-tracker",
+      process.env.EBPF_TRACKER_DEMO_SPONSOR_NAME || "ebpf-tracker",
     sponsorMessage:
       process.env.EBPF_TRACKER_DEMO_SPONSOR_MESSAGE ||
       "Replayable syscall demos for Rust and Node.",
     sponsorUrl:
       process.env.EBPF_TRACKER_DEMO_SPONSOR_URL ||
-      "https://github.com/givtaj/cargo-ebpf-tracker"
+      "https://github.com/givtaj/ebpf-tracker"
   };
 }
 

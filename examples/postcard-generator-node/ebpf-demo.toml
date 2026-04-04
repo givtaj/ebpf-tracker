@@ -1,7 +1,7 @@
 runtime = "node"
 command = ["npm", "run", "generate"]
-product_name = "eBPF_tracker"
+product_name = "ebpf-tracker"
 product_tagline = "Trace the full command session, then replay it."
-sponsor_name = "cargo-ebpf-tracker"
+sponsor_name = "ebpf-tracker"
 sponsor_message = "Replayable syscall demos for Rust and Node."
-sponsor_url = "https://github.com/givtaj/cargo-ebpf-tracker"
+sponsor_url = "https://github.com/givtaj/ebpf-tracker"

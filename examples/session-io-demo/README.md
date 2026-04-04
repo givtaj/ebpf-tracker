@@ -1,10 +1,10 @@
 # Session IO Demo
 
-This example shows the main benefit of `eBPF_tracker`: one wrapped `cargo run`
+This example shows the main benefit of `ebpf-tracker`: one wrapped `cargo run`
 surfaces both build-time and runtime activity without adding instrumentation to
 the Rust code.
 
-It is meant to be run from a local clone of `cargo-ebpf-tracker`.
+It is meant to be run from a local clone of `ebpf-tracker`.
 
 Manifest for this example:
 
@@ -12,11 +12,11 @@ Manifest for this example:
 runtime = "rust"
 command = ["cargo", "run"]
 clean = ["cargo", "clean", "--quiet", "--target-dir", "target"]
-product_name = "eBPF_tracker"
+product_name = "ebpf-tracker"
 product_tagline = "Trace the full command session, then replay it."
-sponsor_name = "cargo-ebpf-tracker"
+sponsor_name = "ebpf-tracker"
 sponsor_message = "Replayable syscall demos for Rust and Node."
-sponsor_url = "https://github.com/givtaj/cargo-ebpf-tracker"
+sponsor_url = "https://github.com/givtaj/ebpf-tracker"
 ```
 
 What the demo does:
@@ -36,13 +36,13 @@ cargo demo session-io-demo
 Run the same manifest from anywhere with a repo-built binary:
 
 ```bash
-/path/to/cargo-ebpf-tracker/target/debug/eBPF_tracker demo session-io-demo
+/path/to/ebpf-tracker/target/debug/ebpf-tracker demo session-io-demo
 ```
 
 Open the live dashboard for the same example:
 
 ```bash
-/path/to/cargo-ebpf-tracker/target/debug/eBPF_tracker demo --dashboard session-io-demo
+/path/to/ebpf-tracker/target/debug/ebpf-tracker demo --dashboard session-io-demo
 ```
 
 That dashboard run still uses the same `ebpf-demo.toml` manifest and keeps a

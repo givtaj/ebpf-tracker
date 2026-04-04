@@ -4,7 +4,7 @@
 writes a per-run dataset bundle, and analyzes an existing bundle with LM Studio
 or any OpenAI-compatible chat API.
 
-The root `eBPF_tracker` CLI can also run this crate in supervised background
+The root `ebpf-tracker` CLI can also run this crate in supervised background
 mode via `--intelligence-dataset`.
 
 ## Commands
@@ -88,7 +88,7 @@ values and counts them in `ignored_lines`.
 ## Examples
 
 ```bash
-eBPF_tracker --emit jsonl cargo run | cargo dataset --test-name cargo-run-smoke
+ebpf-tracker --emit jsonl cargo run | cargo dataset --test-name cargo-run-smoke
 cargo dataset --replay logs/ebpf-tracker-YYYYMMDD-HHMMSS.log
 cargo dataset analyze --run datasets/<run-id> --provider lm-studio --model qwen/qwen3.5-9b
 cargo dataset analyze --run datasets/<run-id> --provider lm-studio --model qwen/qwen3.5-9b --live-logs

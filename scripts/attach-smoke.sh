@@ -46,7 +46,7 @@ trap cleanup EXIT INT TERM
 cd "${repo_root}"
 
 printf '[attach-smoke] validating scaffolded docker attach plan\n'
-if ! cargo run --locked --quiet --bin eBPF_tracker -- attach docker --container runtime-smoke-demo >"${valid_output_file}"; then
+if ! cargo run --locked --quiet --bin ebpf-tracker -- attach docker --container runtime-smoke-demo >"${valid_output_file}"; then
   fail "scaffolded docker attach plan failed"
 fi
 
@@ -58,7 +58,7 @@ grep -q '^backend: inspektor-gadget$' "${valid_output_file}" || fail "attach bac
 grep -q '^target: container runtime-smoke-demo$' "${valid_output_file}" || fail "attach target missing"
 
 printf '[attach-smoke] validating attach rejection path\n'
-if cargo run --locked --quiet --bin eBPF_tracker -- attach docker --backend tetragon --container runtime-smoke-demo >"${invalid_output_file}" 2>&1; then
+if cargo run --locked --quiet --bin ebpf-tracker -- attach docker --backend tetragon --container runtime-smoke-demo >"${invalid_output_file}" 2>&1; then
   fail "invalid docker+tetragon attach unexpectedly succeeded"
 fi
 

@@ -25,7 +25,7 @@ fn print_usage() {
     eprintln!("Writes a per-run dataset bundle under ./datasets by default.");
     eprintln!("Cargo alias: cargo dataset --replay logs/ebpf-tracker-YYYYMMDD-HHMMSS.log");
     eprintln!(
-        "Example: eBPF_tracker --emit jsonl cargo run | cargo dataset --test-name cargo-run-smoke"
+        "Example: ebpf-tracker --emit jsonl cargo run | cargo dataset --test-name cargo-run-smoke"
     );
     eprintln!(
         "Example: cargo dataset analyze --run datasets/run-123 --provider lm-studio --model qwen/qwen3.5-9b"

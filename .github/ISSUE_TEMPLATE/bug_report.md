@@ -21,7 +21,7 @@ labels: bug
 - Rust version:
 - Docker version:
 - Command used:
-- `eBPF_tracker` mode: `run` / `demo` / `see` / `attach`
+- `ebpf-tracker` mode: `run` / `demo` / `see` / `attach`
 - Viewer or Node usage, if relevant:
 
 ## Notes

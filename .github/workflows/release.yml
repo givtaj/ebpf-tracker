@@ -60,25 +60,25 @@ jobs:
           shared-key: release-${{ matrix.target }}
 
       - name: Build release binary
-        run: cargo build --locked --release --bin eBPF_tracker --target ${{ matrix.target }}
+        run: cargo build --locked --release --bin ebpf-tracker --target ${{ matrix.target }}
 
       - name: Package archive
         shell: bash
         run: |
           set -euo pipefail
-          package_dir="dist/eBPF_tracker-${{ github.ref_name }}-${{ matrix.target }}"
+          package_dir="dist/ebpf-tracker-${{ github.ref_name }}-${{ matrix.target }}"
           archive_name="${package_dir}.tar.gz"
           mkdir -p "${package_dir}"
-          cp "target/${{ matrix.target }}/release/eBPF_tracker" "${package_dir}/"
+          cp "target/${{ matrix.target }}/release/ebpf-tracker" "${package_dir}/"
           cp LICENSE "${package_dir}/" 2>/dev/null || true
           cp README.md "${package_dir}/" 2>/dev/null || true
-          tar -czf "${archive_name}" -C dist "eBPF_tracker-${{ github.ref_name }}-${{ matrix.target }}"
+          tar -czf "${archive_name}" -C dist "ebpf-tracker-${{ github.ref_name }}-${{ matrix.target }}"
 
       - name: Upload archive
         uses: actions/upload-artifact@v4
         with:
-          name: eBPF_tracker-${{ github.ref_name }}-${{ matrix.target }}
-          path: dist/eBPF_tracker-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
+          name: ebpf-tracker-${{ github.ref_name }}-${{ matrix.target }}
+          path: dist/ebpf-tracker-${{ github.ref_name }}-${{ matrix.target }}.tar.gz
           if-no-files-found: error
           retention-days: 7
 
@@ -98,5 +98,5 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/**/eBPF_tracker-*.tar.gz
+          files: dist/**/ebpf-tracker-*.tar.gz
           generate_release_notes: true

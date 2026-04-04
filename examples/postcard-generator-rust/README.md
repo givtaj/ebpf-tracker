@@ -1,6 +1,6 @@
 # Postcard Generator Rust
 
-This example renders a visual postcard with plain Rust so `eBPF_tracker` can
+This example renders a visual postcard with plain Rust so `ebpf-tracker` can
 show the full file, network, process, and output activity of one small command.
 The generated HTML, SVG, and summary JSON carry the demo's product and sponsor
 branding, so the artifact itself can double as a product-facing demo.
@@ -10,11 +10,11 @@ Manifest for this example:
 ```toml
 runtime = "rust"
 command = ["cargo", "run", "--quiet"]
-product_name = "eBPF_tracker"
+product_name = "ebpf-tracker"
 product_tagline = "Trace the full command session, then replay it."
-sponsor_name = "cargo-ebpf-tracker"
+sponsor_name = "ebpf-tracker"
 sponsor_message = "Replayable syscall demos for Rust and Node."
-sponsor_url = "https://github.com/givtaj/cargo-ebpf-tracker"
+sponsor_url = "https://github.com/givtaj/ebpf-tracker"
 ```
 
 What it does:

@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: CLI guide and examples
-    url: https://github.com/givtaj/cargo-ebpf-tracker/blob/main/docs/cli.md
+    url: https://github.com/givtaj/ebpf-tracker/blob/main/docs/cli.md
     about: Check the CLI guide and example docs before opening an issue.

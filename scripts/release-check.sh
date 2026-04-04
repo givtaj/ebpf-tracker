@@ -62,14 +62,14 @@ cargo test --all --locked
 echo "[release-check] cargo build --workspace --locked"
 cargo build --workspace --locked
 
-echo "[release-check] cargo build --release --locked --bin eBPF_tracker"
-cargo build --release --locked --bin eBPF_tracker
+echo "[release-check] cargo build --release --locked --bin ebpf-tracker"
+cargo build --release --locked --bin ebpf-tracker
 
-echo "[release-check] cargo run --locked --bin eBPF_tracker -- --help"
-cargo run --locked --bin eBPF_tracker -- --help
+echo "[release-check] cargo run --locked --bin ebpf-tracker -- --help"
+cargo run --locked --bin ebpf-tracker -- --help
 
-echo "[release-check] cargo run --locked --bin eBPF_tracker -- demo --list"
-cargo run --locked --bin eBPF_tracker -- demo --list
+echo "[release-check] cargo run --locked --bin ebpf-tracker -- demo --list"
+cargo run --locked --bin ebpf-tracker -- demo --list
 
 if [[ "${run_runtime_smoke}" -eq 1 ]]; then
   echo "[release-check] bash scripts/runtime-smoke.sh"

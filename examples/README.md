@@ -1,9 +1,9 @@
 # Examples
 
-This directory contains runnable demo projects for `eBPF_tracker`.
+This directory contains runnable demo projects for `ebpf-tracker`.
 
 These examples are for people working from a local clone of
-`cargo-ebpf-tracker`. They are not installed by `cargo install`.
+`ebpf-tracker`. They are not installed by `cargo install`.
 
 Generated example outputs such as `logs/` and `dist/` appear only after you run
 the demos locally. They are runtime artifacts, not committed release assets.
@@ -50,8 +50,8 @@ From a repo-built binary, the same manifests can also be launched outside the
 repository root:
 
 ```bash
-/path/to/cargo-ebpf-tracker/target/debug/eBPF_tracker demo session-io-demo
-/path/to/cargo-ebpf-tracker/target/debug/eBPF_tracker demo --dashboard session-io-demo
+/path/to/ebpf-tracker/target/debug/ebpf-tracker demo session-io-demo
+/path/to/ebpf-tracker/target/debug/ebpf-tracker demo --dashboard session-io-demo
 ```
 
 Dashboard runs still execute the example's `ebpf-demo.toml` manifest, but they

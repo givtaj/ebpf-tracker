@@ -7,7 +7,7 @@ const { spawn } = require("child_process");
 
 const DEFAULT_PORT = 43115;
 const DEFAULT_HOST = "127.0.0.1";
-const DEFAULT_TARGET = ["./target/debug/eBPF_tracker", "demo", "session-io-demo"];
+const DEFAULT_TARGET = ["./target/debug/ebpf-tracker", "demo", "session-io-demo"];
 const MAX_PORT_RETRIES = 16;
 const BUNDLED_REPLAYS = [
   {
@@ -239,7 +239,7 @@ function isTrackerBinary(program) {
   if (!program) {
     return false;
   }
-  return program === "eBPF_tracker" || program === "./target/debug/eBPF_tracker" || program.endsWith("/eBPF_tracker");
+  return program === "ebpf-tracker" || program === "./target/debug/ebpf-tracker" || program.endsWith("/ebpf-tracker");
 }
 
 function createState() {
@@ -1043,7 +1043,7 @@ function handleTraceRecord(event, state, options = {}) {
 function ingestSession(event, state, options = {}) {
   state.branding = {
     demo_name: event.demo_name || null,
-    product_name: event.product_name || "eBPF_tracker",
+    product_name: event.product_name || "ebpf-tracker",
     product_tagline: event.product_tagline || null,
     sponsor_name: event.sponsor_name || null,
     sponsor_message: event.sponsor_message || null,
@@ -2052,12 +2052,12 @@ function renderHtml() {
           <div class="brand-banner">
             <div class="brand-card">
               <small>product</small>
-              <strong id="product-name">eBPF_tracker</strong>
+              <strong id="product-name">ebpf-tracker</strong>
               <p id="product-tagline">Trace the full command session, then replay it.</p>
             </div>
             <div class="brand-card" id="sponsor-box" hidden>
               <small>presented by</small>
-              <strong id="sponsor-name">cargo-ebpf-tracker</strong>
+              <strong id="sponsor-name">ebpf-tracker</strong>
               <p id="sponsor-message"></p>
               <a id="sponsor-link" href="#" target="_blank" rel="noreferrer" hidden>project link</a>
             </div>
@@ -2420,7 +2420,7 @@ function renderHtml() {
       }
 
       function applyBranding(branding) {
-        const productName = branding?.product_name || "eBPF_tracker";
+        const productName = branding?.product_name || "ebpf-tracker";
         const productTagline = branding?.product_tagline || "Trace the full command session, then replay it.";
         const sponsorName = branding?.sponsor_name || "";
         const sponsorMessage = branding?.sponsor_message || "";

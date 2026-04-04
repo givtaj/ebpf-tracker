@@ -46,8 +46,8 @@ For CLI or example changes, also run a focused command that exercises the path
 you touched. Useful examples from this repo include:
 
 ```bash
-cargo run --bin eBPF_tracker -- --help
-cargo run --bin eBPF_tracker -- /bin/true
+cargo run --bin ebpf-tracker -- --help
+cargo run --bin ebpf-tracker -- /bin/true
 cargo demo --list
 cargo demo session-io-demo
 bash scripts/dashboard-smoke.sh

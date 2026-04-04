@@ -60,7 +60,7 @@ Example session record:
   "type": "session",
   "timestamp_unix_ms": 789,
   "demo_name": "postcard-generator-rust",
-  "product_name": "eBPF_tracker"
+  "product_name": "ebpf-tracker"
 }
 ```
 

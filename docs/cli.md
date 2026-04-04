@@ -1,6 +1,6 @@
 # CLI Guide
 
-This page holds the detailed usage notes for the root `eBPF_tracker` CLI. The
+This page holds the detailed usage notes for the root `ebpf-tracker` CLI. The
 main [`README.md`](../README.md) stays intentionally short and points here for
 the root-package behavior that does not belong to the extension crates.
 
@@ -21,7 +21,7 @@ cargo install --path . --locked
 Install from GitHub:
 
 ```bash
-cargo install --git https://github.com/givtaj/cargo-ebpf-tracker --locked
+cargo install --git https://github.com/givtaj/ebpf-tracker --locked
 ```
 
 The first public release is GitHub-release-first. Use `cargo install --git ...`
@@ -31,13 +31,13 @@ crates.io yet.
 After install, the smallest useful checks are:
 
 ```bash
-eBPF_tracker --help
-eBPF_tracker /bin/true
-eBPF_tracker cargo run
-eBPF_tracker npm run dev
+ebpf-tracker --help
+ebpf-tracker /bin/true
+ebpf-tracker cargo run
+ebpf-tracker npm run dev
 ```
 
-`eBPF_tracker /bin/true` is the smallest real tracer smoke test and still
+`ebpf-tracker /bin/true` is the smallest real tracer smoke test and still
 requires Docker support. The `cargo demo`, `cargo see`, `cargo dataset`,
 `cargo otel`, `cargo jaeger`, and `cargo viewer` helpers remain Cargo aliases
 for people working from a clone of this repository.
@@ -50,21 +50,21 @@ Runtime assets are materialized under `~/.cache/ebpf-tracker` by default. Set
 Run without installing:
 
 ```bash
-cargo run --bin eBPF_tracker -- cargo run
+cargo run --bin ebpf-tracker -- cargo run
 ```
 
 Common commands:
 
 ```bash
-eBPF_tracker cargo run
-eBPF_tracker cargo test
-eBPF_tracker cargo check
-eBPF_tracker npm run dev
-eBPF_tracker npm test
-eBPF_tracker --log-enable cargo run
-eBPF_tracker --emit jsonl cargo run
-eBPF_tracker --transport perf cargo run
-eBPF_tracker --runtime node /bin/sh -lc "npm run dev"
+ebpf-tracker cargo run
+ebpf-tracker cargo test
+ebpf-tracker cargo check
+ebpf-tracker npm run dev
+ebpf-tracker npm test
+ebpf-tracker --log-enable cargo run
+ebpf-tracker --emit jsonl cargo run
+ebpf-tracker --transport perf cargo run
+ebpf-tracker --runtime node /bin/sh -lc "npm run dev"
 ```
 
 The tracer follows the full wrapped command session. In practice that means
@@ -85,7 +85,7 @@ Runtime selection is modular:
 The CLI can reserve `stdout` for a machine-readable event stream:
 
 ```bash
-eBPF_tracker --emit jsonl cargo run
+ebpf-tracker --emit jsonl cargo run
 ```
 
 In `jsonl` mode:
@@ -98,8 +98,8 @@ In `jsonl` mode:
 That makes it easy to pipe the trace into downstream tools such as:
 
 ```bash
-eBPF_tracker --emit jsonl cargo run | cargo dataset --test-name cargo-run-smoke
-eBPF_tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name session-io-demo
+ebpf-tracker --emit jsonl cargo run | cargo dataset --test-name cargo-run-smoke
+ebpf-tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name session-io-demo
 ```
 
 The shared JSONL record schema lives in
@@ -110,18 +110,18 @@ The shared JSONL record schema lives in
 Repo-local dashboard examples:
 
 ```bash
-./target/debug/eBPF_tracker --dashboard cargo run
-./target/debug/eBPF_tracker --dashboard npm run dev
-./target/debug/eBPF_tracker --dashboard node
-./target/debug/eBPF_tracker demo --dashboard session-io-demo
-./target/debug/eBPF_tracker see
+./target/debug/ebpf-tracker --dashboard cargo run
+./target/debug/ebpf-tracker --dashboard npm run dev
+./target/debug/ebpf-tracker --dashboard node
+./target/debug/ebpf-tracker demo --dashboard session-io-demo
+./target/debug/ebpf-tracker see
 ```
 
 `see` is a shortcut for the repo-local dashboard demo experience. You can also
 target a specific example:
 
 ```bash
-./target/debug/eBPF_tracker see postcard-generator-rust
+./target/debug/ebpf-tracker see postcard-generator-rust
 cargo see postcard-generator-rust
 ```
 
@@ -149,7 +149,7 @@ bash scripts/dashboard-smoke.sh --no-open
 That uses a bundled replay fixture instead of starting a fresh trace.
 
 The interactive Node REPL path keeps a real terminal attached while the viewer
-stays live, so `./target/debug/eBPF_tracker --dashboard node` works for
+stays live, so `./target/debug/ebpf-tracker --dashboard node` works for
 side-by-side typing plus dashboard review. Pure in-memory expressions will not
 produce much trace data, so use file, network, or subprocess commands in the
 REPL if you want richer viewer output.
@@ -160,7 +160,7 @@ If `ebpf-tracker.toml` exists in the current project, it is picked up
 automatically. You can also pass it explicitly:
 
 ```bash
-eBPF_tracker --config ebpf-tracker.toml cargo run
+ebpf-tracker --config ebpf-tracker.toml cargo run
 ```
 
 `--probe` takes precedence over config-generated probes.
@@ -204,10 +204,10 @@ start tracing yet.
 Current scaffold examples:
 
 ```bash
-eBPF_tracker attach k8s --selector app=payments
-eBPF_tracker attach aws-eks --cluster prod --region us-east-1 --selector app=payments
-eBPF_tracker attach aws-ecs --cluster prod --service api
-eBPF_tracker attach docker --container payments-api
+ebpf-tracker attach k8s --selector app=payments
+ebpf-tracker attach aws-eks --cluster prod --region us-east-1 --selector app=payments
+ebpf-tracker attach aws-ecs --cluster prod --service api
+ebpf-tracker attach docker --container payments-api
 ```
 
 Current first-wave scope:
@@ -223,26 +223,26 @@ Current first-wave scope:
 Smoke check:
 
 ```bash
-cargo run --bin eBPF_tracker -- /bin/true
+cargo run --bin ebpf-tracker -- /bin/true
 ```
 
 Installed-binary check from a Rust project:
 
 ```bash
-eBPF_tracker cargo run
+ebpf-tracker cargo run
 ```
 
 Config-driven check:
 
 ```bash
 cp ebpf-tracker.toml.example ebpf-tracker.toml
-eBPF_tracker cargo run
+ebpf-tracker cargo run
 ```
 
 Repository demo check:
 
 ```bash
-eBPF_tracker demo --list
+ebpf-tracker demo --list
 ```
 
 Expected today:

@@ -60,7 +60,7 @@ run_jsonl_smoke() {
 
   printf '[runtime-smoke] running minimal traced session with /bin/true (%s)\n' "${label}"
 
-  if ! cargo run --locked --quiet --bin eBPF_tracker -- "$@" --emit jsonl /bin/true >"${output_file}"; then
+  if ! cargo run --locked --quiet --bin ebpf-tracker -- "$@" --emit jsonl /bin/true >"${output_file}"; then
     fail "minimal traced session failed for ${label}"
   fi
 

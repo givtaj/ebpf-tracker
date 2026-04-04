@@ -102,15 +102,15 @@ struct RenderHtmlContext<'a> {
 fn load_demo_branding() -> DemoBranding {
     DemoBranding {
         product_name: env::var("EBPF_TRACKER_DEMO_PRODUCT_NAME")
-            .unwrap_or_else(|_| "eBPF_tracker".to_string()),
+            .unwrap_or_else(|_| "ebpf-tracker".to_string()),
         product_tagline: env::var("EBPF_TRACKER_DEMO_PRODUCT_TAGLINE")
             .unwrap_or_else(|_| "Trace the full command session, then replay it.".to_string()),
         sponsor_name: env::var("EBPF_TRACKER_DEMO_SPONSOR_NAME")
-            .unwrap_or_else(|_| "cargo-ebpf-tracker".to_string()),
+            .unwrap_or_else(|_| "ebpf-tracker".to_string()),
         sponsor_message: env::var("EBPF_TRACKER_DEMO_SPONSOR_MESSAGE")
             .unwrap_or_else(|_| "Replayable syscall demos for Rust and Node.".to_string()),
         sponsor_url: env::var("EBPF_TRACKER_DEMO_SPONSOR_URL")
-            .unwrap_or_else(|_| "https://github.com/givtaj/cargo-ebpf-tracker".to_string()),
+            .unwrap_or_else(|_| "https://github.com/givtaj/ebpf-tracker".to_string()),
     }
 }
 

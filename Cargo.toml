@@ -28,8 +28,8 @@ resolver = "2"
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/givtaj/cargo-ebpf-tracker"
-homepage = "https://github.com/givtaj/cargo-ebpf-tracker"
+repository = "https://github.com/givtaj/ebpf-tracker"
+homepage = "https://github.com/givtaj/ebpf-tracker"
 
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
@@ -45,5 +45,5 @@ serde_json = { workspace = true }
 toml = "0.8"
 
 [[bin]]
-name = "eBPF_tracker"
+name = "ebpf-tracker"
 path = "src/main.rs"

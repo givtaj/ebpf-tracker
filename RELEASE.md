@@ -1,6 +1,6 @@
 # Release Runbook
 
-This is the maintainer checklist for a first public release of `eBPF_tracker`.
+This is the maintainer checklist for a first public release of `ebpf-tracker`.
 It assumes a GitHub-release-first flow. The workspace crates are marked
 `publish = false`, so the release artifact is the tagged source tree and any
 binary assets you choose to attach, not a crates.io publish.
@@ -33,9 +33,9 @@ That script is the same generic check set used in GitHub-hosted automation:
 cargo fmt --all --check
 cargo test --all --locked
 cargo build --workspace --locked
-cargo build --release --locked --bin eBPF_tracker
-cargo run --locked --bin eBPF_tracker -- --help
-cargo run --locked --bin eBPF_tracker -- demo --list
+cargo build --release --locked --bin ebpf-tracker
+cargo run --locked --bin ebpf-tracker -- --help
+cargo run --locked --bin ebpf-tracker -- demo --list
 ```
 
 Before tagging, also run the real tracer smoke path on a maintainer machine
@@ -76,8 +76,8 @@ git push origin vX.Y.Z
 - Confirm the tagged source matches the committed release prep.
 - Confirm the release notes mention the supported install path:
   - `cargo install --path . --locked` for local clones
-  - `cargo install --git https://github.com/givtaj/cargo-ebpf-tracker --locked` for GitHub installs
-- Confirm the root CLI still prints useful help and the binary name remains `eBPF_tracker`.
+  - `cargo install --git https://github.com/givtaj/ebpf-tracker --locked` for GitHub installs
+- Confirm the root CLI still prints useful help and the binary name remains `ebpf-tracker`.
 - If artifacts are attached, verify their filenames include the release version and platform.
 
 ## Post-Release Follow-Up

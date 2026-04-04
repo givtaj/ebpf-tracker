@@ -13,7 +13,7 @@ This file tracks notable repo changes in progress on this branch.
 - Added a `cargo dataset` workspace alias for launching the dataset tool locally.
 - Added a typed `session` stream record for demo branding metadata.
 - Added demo manifest branding fields and propagated them into demo runtime environment variables.
-- Added an `eBPF_tracker see` shortcut and matching `cargo see` alias for the default dashboard demo flow.
+- Added an `ebpf-tracker see` shortcut and matching `cargo see` alias for the default dashboard demo flow.
 - Added root agent workflow guidance in `AGENT.md`.
 - Added an initial `attach` CLI scaffold and backend adapter layer so customer-owned container and Kubernetes targets can sit beside the existing managed runtime path.
 - Added a baseline GitHub Actions CI workflow for formatting, build, and test checks on pushes and pull requests.
