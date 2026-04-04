@@ -63,6 +63,7 @@ impl Default for AttachArgs {
     }
 }
 
+#[derive(Debug)]
 pub(crate) enum AttachParseOutcome {
     Help,
     Run(AttachArgs),
@@ -243,6 +244,18 @@ struct AttachPlan {
     repo_tasks: Vec<String>,
 }
 
+struct AttachReport {
+    lines: Vec<String>,
+}
+
+impl AttachReport {
+    fn print(&self) {
+        for line in &self.lines {
+            println!("{line}");
+        }
+    }
+}
+
 trait AttachBackendAdapter {
     fn plan(&self, target: &ResolvedAttachTarget) -> AttachPlan;
 }
@@ -256,6 +269,29 @@ fn build_attach_plan(target: &ResolvedAttachTarget) -> AttachPlan {
         AttachBackend::Tetragon => &TetragonAdapter,
     };
     adapter.plan(target)
+}
+
+fn build_attach_report(target: &ResolvedAttachTarget, plan: &AttachPlan) -> AttachReport {
+    let mut lines = vec![
+        "attach scaffold".to_string(),
+        "status: experimental scaffold/plan mode; no live backend execution yet".to_string(),
+        "this command prints a plan only and does not start tracing yet".to_string(),
+        format!("platform: {}", target.platform.as_str()),
+        format!("backend: {}", target.backend.as_str()),
+        format!("target: {}", target.describe()),
+        format!("integration approach: {}", plan.approach),
+    ];
+
+    for note in &plan.scope_notes {
+        lines.push(format!("note: {note}"));
+    }
+
+    lines.push("next repo tasks:".to_string());
+    for task in &plan.repo_tasks {
+        lines.push(format!("- {task}"));
+    }
+
+    AttachReport { lines }
 }
 
 impl AttachBackendAdapter for InspektorGadgetAdapter {
@@ -374,56 +410,56 @@ pub(crate) fn parse_attach_args(args: &[String]) -> Result<AttachParseOutcome, S
                 let value = args
                     .get(index + 1)
                     .ok_or_else(|| "missing value for --namespace".to_string())?;
-                parsed.namespace = Some(value.clone());
+                parsed.namespace = Some(parse_attach_value(value, "--namespace")?);
                 index += 2;
             }
             "--selector" => {
                 let value = args
                     .get(index + 1)
                     .ok_or_else(|| "missing value for --selector".to_string())?;
-                parsed.selector = Some(value.clone());
+                parsed.selector = Some(parse_attach_value(value, "--selector")?);
                 index += 2;
             }
             "--pod" => {
                 let value = args
                     .get(index + 1)
                     .ok_or_else(|| "missing value for --pod".to_string())?;
-                parsed.pod = Some(value.clone());
+                parsed.pod = Some(parse_attach_value(value, "--pod")?);
                 index += 2;
             }
             "--cluster" => {
                 let value = args
                     .get(index + 1)
                     .ok_or_else(|| "missing value for --cluster".to_string())?;
-                parsed.cluster = Some(value.clone());
+                parsed.cluster = Some(parse_attach_value(value, "--cluster")?);
                 index += 2;
             }
             "--region" => {
                 let value = args
                     .get(index + 1)
                     .ok_or_else(|| "missing value for --region".to_string())?;
-                parsed.region = Some(value.clone());
+                parsed.region = Some(parse_attach_value(value, "--region")?);
                 index += 2;
             }
             "--service" => {
                 let value = args
                     .get(index + 1)
                     .ok_or_else(|| "missing value for --service".to_string())?;
-                parsed.service = Some(value.clone());
+                parsed.service = Some(parse_attach_value(value, "--service")?);
                 index += 2;
             }
             "--task" => {
                 let value = args
                     .get(index + 1)
                     .ok_or_else(|| "missing value for --task".to_string())?;
-                parsed.task = Some(value.clone());
+                parsed.task = Some(parse_attach_value(value, "--task")?);
                 index += 2;
             }
             "--container" => {
                 let value = args
                     .get(index + 1)
                     .ok_or_else(|| "missing value for --container".to_string())?;
-                parsed.container = Some(value.clone());
+                parsed.container = Some(parse_attach_value(value, "--container")?);
                 index += 2;
             }
             _ if arg.starts_with("--backend=") => {
@@ -431,35 +467,53 @@ pub(crate) fn parse_attach_args(args: &[String]) -> Result<AttachParseOutcome, S
                 index += 1;
             }
             _ if arg.starts_with("--namespace=") => {
-                parsed.namespace = Some(arg.trim_start_matches("--namespace=").to_string());
+                parsed.namespace = Some(parse_attach_value(
+                    arg.trim_start_matches("--namespace="),
+                    "--namespace",
+                )?);
                 index += 1;
             }
             _ if arg.starts_with("--selector=") => {
-                parsed.selector = Some(arg.trim_start_matches("--selector=").to_string());
+                parsed.selector = Some(parse_attach_value(
+                    arg.trim_start_matches("--selector="),
+                    "--selector",
+                )?);
                 index += 1;
             }
             _ if arg.starts_with("--pod=") => {
-                parsed.pod = Some(arg.trim_start_matches("--pod=").to_string());
+                parsed.pod = Some(parse_attach_value(arg.trim_start_matches("--pod="), "--pod")?);
                 index += 1;
             }
             _ if arg.starts_with("--cluster=") => {
-                parsed.cluster = Some(arg.trim_start_matches("--cluster=").to_string());
+                parsed.cluster = Some(parse_attach_value(
+                    arg.trim_start_matches("--cluster="),
+                    "--cluster",
+                )?);
                 index += 1;
             }
             _ if arg.starts_with("--region=") => {
-                parsed.region = Some(arg.trim_start_matches("--region=").to_string());
+                parsed.region = Some(parse_attach_value(
+                    arg.trim_start_matches("--region="),
+                    "--region",
+                )?);
                 index += 1;
             }
             _ if arg.starts_with("--service=") => {
-                parsed.service = Some(arg.trim_start_matches("--service=").to_string());
+                parsed.service = Some(parse_attach_value(
+                    arg.trim_start_matches("--service="),
+                    "--service",
+                )?);
                 index += 1;
             }
             _ if arg.starts_with("--task=") => {
-                parsed.task = Some(arg.trim_start_matches("--task=").to_string());
+                parsed.task = Some(parse_attach_value(arg.trim_start_matches("--task="), "--task")?);
                 index += 1;
             }
             _ if arg.starts_with("--container=") => {
-                parsed.container = Some(arg.trim_start_matches("--container=").to_string());
+                parsed.container = Some(parse_attach_value(
+                    arg.trim_start_matches("--container="),
+                    "--container",
+                )?);
                 index += 1;
             }
             _ if arg.starts_with('-') => return Err(format!("unknown attach flag: {arg}")),
@@ -477,20 +531,7 @@ pub(crate) fn parse_attach_args(args: &[String]) -> Result<AttachParseOutcome, S
 pub(crate) fn run_attach(args: AttachArgs) -> Result<i32, String> {
     let resolved = args.resolve()?;
     let plan = build_attach_plan(&resolved);
-
-    println!("attach scaffold");
-    println!("status: scaffold only; no backend execution yet");
-    println!("platform: {}", resolved.platform.as_str());
-    println!("backend: {}", resolved.backend.as_str());
-    println!("target: {}", resolved.describe());
-    println!("integration approach: {}", plan.approach);
-    for note in plan.scope_notes {
-        println!("note: {note}");
-    }
-    println!("next repo tasks:");
-    for task in plan.repo_tasks {
-        println!("- {task}");
-    }
+    build_attach_report(&resolved, &plan).print();
 
     Ok(0)
 }
@@ -528,6 +569,14 @@ fn normalized_option(value: Option<String>, flag: &str) -> Result<Option<String>
     Ok(Some(trimmed.to_string()))
 }
 
+fn parse_attach_value(value: &str, flag: &str) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{flag} must not be empty"));
+    }
+    Ok(trimmed.to_string())
+}
+
 fn require_present(value: Option<&str>, flag: &str) -> Result<(), String> {
     if value.is_some() {
         Ok(())
@@ -558,8 +607,8 @@ fn require_selector_or_pod(target: &ResolvedAttachTarget) -> Result<(), String> 
 #[cfg(test)]
 mod tests {
     use super::{
-        build_attach_plan, parse_attach_args, run_attach, AttachBackend, AttachParseOutcome,
-        AttachPlatform,
+        build_attach_plan, build_attach_report, parse_attach_args, run_attach, AttachBackend,
+        AttachParseOutcome, AttachPlatform,
     };
 
     #[test]
@@ -607,6 +656,26 @@ mod tests {
     }
 
     #[test]
+    fn parse_attach_args_rejects_empty_normalized_values() {
+        let error = parse_attach_args(&["docker".to_string(), "--container=   ".to_string()])
+            .expect_err("blank attach values should fail");
+
+        assert_eq!(error, "--container must not be empty");
+    }
+
+    #[test]
+    fn parse_attach_args_rejects_unknown_flags_with_clear_message() {
+        let error = parse_attach_args(&[
+            "k8s".to_string(),
+            "--selector=app=payments".to_string(),
+            "--mystery".to_string(),
+        ])
+        .expect_err("unknown attach flag should fail");
+
+        assert_eq!(error, "unknown attach flag: --mystery");
+    }
+
+    #[test]
     fn run_attach_rejects_tetragon_for_docker_targets() {
         let parsed = parse_attach_args(&[
             "docker".to_string(),
@@ -618,7 +687,10 @@ mod tests {
         match parsed {
             AttachParseOutcome::Run(args) => {
                 let error = run_attach(args).expect_err("docker+tetragon should fail");
-                assert!(error.contains("inspektor-gadget backend"));
+                assert_eq!(
+                    error,
+                    "docker attach currently only scaffolds the inspektor-gadget backend"
+                );
             }
             AttachParseOutcome::Help => panic!("expected run outcome"),
         }
@@ -633,7 +705,33 @@ mod tests {
         match parsed {
             AttachParseOutcome::Run(args) => {
                 let error = run_attach(args).expect_err("aws-eks without cluster should fail");
-                assert!(error.contains("--cluster"));
+                assert_eq!(error, "attach target requires --cluster");
+            }
+            AttachParseOutcome::Help => panic!("expected run outcome"),
+        }
+    }
+
+    #[test]
+    fn run_attach_builds_an_explicit_scaffold_report() {
+        let parsed = parse_attach_args(&["k8s".to_string(), "--selector=app=payments".to_string()])
+            .expect("attach args should parse");
+
+        match parsed {
+            AttachParseOutcome::Run(args) => {
+                let resolved = args.resolve().expect("attach target should resolve");
+                let plan = build_attach_plan(&resolved);
+                let report = build_attach_report(&resolved, &plan);
+
+                assert_eq!(report.lines[0], "attach scaffold");
+                assert_eq!(
+                    report.lines[1],
+                    "status: experimental scaffold/plan mode; no live backend execution yet"
+                );
+                assert_eq!(
+                    report.lines[2],
+                    "this command prints a plan only and does not start tracing yet"
+                );
+                assert!(report.lines.iter().any(|line| line == "next repo tasks:"));
             }
             AttachParseOutcome::Help => panic!("expected run outcome"),
         }
