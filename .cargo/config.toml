@@ -1,7 +1,7 @@
 [alias]
 dataset = "run -p ebpf-tracker-dataset --bin ebpf-tracker-dataset --"
-demo = "run -p ebpf-tracker --bin eBPF_tracker -- demo"
+demo = "run -p ebpf-tracker --bin ebpf-tracker -- demo"
 jaeger = "run -p ebpf-tracker-otel --bin ebpf-tracker-otel -- jaeger"
 otel = "run -p ebpf-tracker-otel --bin ebpf-tracker-otel --"
-see = "run -p ebpf-tracker --bin eBPF_tracker -- see"
+see = "run -p ebpf-tracker --bin ebpf-tracker -- see"
 viewer = "run -p ebpf-tracker-viewer --bin ebpf-tracker-viewer --"

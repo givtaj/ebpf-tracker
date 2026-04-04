@@ -42,17 +42,24 @@ Before tagging, also run the real tracer smoke path on a maintainer machine
 with Docker support:
 
 ```bash
-bash scripts/release-check.sh --with-runtime-smoke
+bash scripts/release-check.sh --with-runtime-smoke --with-demo-smoke
 ```
 
-That extra step is intentionally local for now. The project is still early and
-the GitHub-hosted workflow does not try to pretend it proves privileged
-Docker-backed tracing.
+That extra step is intentionally local for now. It validates both the minimal
+`/bin/true` path and a real traced Rust demo command, while the
+GitHub-hosted workflow stays focused on non-privileged smoke checks.
 
 If you are validating the repo-local viewer surface, include:
 
 ```bash
-bash scripts/dashboard-smoke.sh
+bash scripts/dashboard-smoke.sh --check
+```
+
+To verify the dataset ingest/analyze flow against the bundled replay fixtures
+and a local mock model endpoint, include:
+
+```bash
+bash scripts/dataset-smoke.sh
 ```
 
 ## Tag And Release

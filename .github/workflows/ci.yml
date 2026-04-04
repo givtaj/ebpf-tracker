@@ -28,3 +28,28 @@ jobs:
 
       - name: Build
         run: cargo build --workspace --locked
+
+  smoke:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Viewer smoke
+        run: bash scripts/dashboard-smoke.sh --check
+
+      - name: Dataset smoke
+        run: bash scripts/dataset-smoke.sh

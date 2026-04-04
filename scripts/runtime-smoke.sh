@@ -4,6 +4,7 @@ set -euo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/.." && pwd)"
 run_perf_smoke=0
+run_demo_smoke=0
 
 fail() {
   printf 'runtime smoke: %s\n' "$1" >&2
@@ -12,10 +13,11 @@ fail() {
 
 usage() {
   cat <<'EOF'
-Usage: bash scripts/runtime-smoke.sh [--with-perf-smoke]
+Usage: bash scripts/runtime-smoke.sh [--with-perf-smoke] [--with-demo-smoke]
 
 The default path runs the standard bpftrace-backed JSONL smoke.
 Use --with-perf-smoke to additionally exercise the perf transport path.
+Use --with-demo-smoke to additionally trace a real Rust demo command.
 EOF
 }
 
@@ -23,6 +25,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --with-perf-smoke)
       run_perf_smoke=1
+      shift
+      ;;
+    --with-demo-smoke)
+      run_demo_smoke=1
       shift
       ;;
     -h|--help)
@@ -80,6 +86,26 @@ run_jsonl_smoke "bpftrace" "${default_output_file}"
 
 if [[ "${run_perf_smoke}" -eq 1 ]]; then
   run_jsonl_smoke "perf" "${perf_output_file}" --transport perf
+fi
+
+if [[ "${run_demo_smoke}" -eq 1 ]]; then
+  demo_output_file="${tmp_root}/trace-demo.jsonl"
+  printf '[runtime-smoke] running traced Rust demo command (postcard-generator-rust)\n'
+
+  if ! cargo demo --emit jsonl postcard-generator-rust >"${demo_output_file}"; then
+    fail "traced Rust demo command failed"
+  fi
+
+  if [[ ! -s "${demo_output_file}" ]]; then
+    fail "no JSONL records were emitted for the traced Rust demo command"
+  fi
+
+  if ! grep -q '"type":"syscall"' "${demo_output_file}"; then
+    fail "traced Rust demo command completed but did not emit syscall records"
+  fi
+
+  record_count="$(wc -l < "${demo_output_file}" | tr -d '[:space:]')"
+  printf '[runtime-smoke] captured %s JSONL record(s) for traced Rust demo command\n' "${record_count}"
 fi
 
 printf '[runtime-smoke] tracer path looks healthy\n'
