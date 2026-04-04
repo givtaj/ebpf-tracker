@@ -2264,9 +2264,12 @@ mod tests {
         let temp_dir = unique_temp_dir("ebpf-demo-outside-repo");
         fs::create_dir_all(&temp_dir).expect("temp dir should be created");
 
+        let expected_repo_root =
+            repo_root_from(&std::env::current_dir().expect("current dir should exist"))
+                .expect("current dir should resolve to the repo root");
         let repo_root =
             repo_root_from(&temp_dir).expect("repo-built binaries should resolve the repo root");
-        assert_eq!(repo_root, PathBuf::from(env!("CARGO_MANIFEST_DIR")));
+        assert_eq!(repo_root, expected_repo_root);
 
         let _ = fs::remove_dir_all(temp_dir);
     }

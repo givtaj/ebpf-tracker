@@ -4,6 +4,8 @@ This file tracks notable repo changes in progress on this branch.
 
 ## Unreleased
 
+## v0.1.0 - 2026-04-04
+
 ### Added
 
 - Added the `ebpf-tracker-viewer` workspace crate to own the dashboard and replay viewer.
