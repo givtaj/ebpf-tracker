@@ -115,10 +115,9 @@ ebpf-tracker --dashboard npm run dev
 ebpf-tracker --dashboard node
 ```
 
-`demo` and `see` use the repo's `examples/*/ebpf-demo.toml` manifests. Run
-them from a local checkout, or from a repo-built `ebpf-tracker` binary that can
-still resolve that checkout. A `cargo install`ed binary does not bundle demo
-manifests.
+`demo` and `see` prefer the repo's `examples/*/ebpf-demo.toml` manifests when a
+checkout is available. Without a checkout, the CLI materializes bundled demo
+assets into its cache and runs from there.
 
 Demo and replay entry points:
 
@@ -145,10 +144,9 @@ Log locations:
 
 If you are working from a clone, the `cargo demo`, `cargo see`, and
 `cargo viewer` aliases are the quickest way to reach the repo-local demos and
-viewer. If you are invoking a repo-built binary outside the repo root, use
-`ebpf-tracker demo ...` and `ebpf-tracker see ...` instead. A `cargo install`ed
-binary should use the regular `run` or `--dashboard` paths because demo
-manifests are not bundled.
+viewer. Installed binaries can run `ebpf-tracker demo ...` and
+`ebpf-tracker see ...` directly because demo assets are bundled and
+materialized on demand.
 
 Replay example:
 
@@ -211,14 +209,27 @@ Available flags:
 
 See [`ebpf-tracker.toml.example`](../ebpf-tracker.toml.example).
 
-## Attach Mode (Experimental Scaffold)
+## Attach Mode (Experimental)
 
-`attach` is intentionally surfaced here as an experimental scaffold rather
-than a finished tracer path. It validates the target you named, prints the
-planned integration path, and records the follow-up tasks, but it does not
-start tracing yet.
+`attach` now runs live backend commands for `inspektor-gadget` on `k8s` and
+`aws-eks` targets. The first-wave default probes a broader set of gadget trace
+subcommands (`exec`, `open`, `write`, and `tcpconnect`) when they are available
+in the local plugin, then normalizes supported events into the shared stream
+schema before printing.
 
-Current scaffold examples:
+Operational notes:
+
+- if a trace subcommand is unavailable in your local `kubectl gadget` plugin, it is skipped
+- if all candidate trace subcommands are unavailable, attach exits with an explicit setup error
+- set `EBPF_TRACKER_ATTACH_INSPEKTOR_GADGET_TRACE_SET=exec,open,write,connect` to override the candidate set order
+
+Other `attach` paths are still scaffold-mode only:
+
+- `docker` targets
+- `aws-ecs` targets
+- all `tetragon` targets
+
+Current attach examples:
 
 ```bash
 ebpf-tracker attach k8s --selector app=payments
@@ -256,10 +267,37 @@ cp ebpf-tracker.toml.example ebpf-tracker.toml
 ebpf-tracker cargo run
 ```
 
-Repository demo check from a local checkout:
+Demo availability check:
 
 ```bash
-cargo demo --list
+ebpf-tracker demo --list
+```
+
+Customer UX end-to-end suite (maintainer-facing):
+
+```bash
+bash scripts/customer-ux-check.sh
+bash scripts/customer-ux-check.sh --strict-prereqs
+bash scripts/customer-ux-check.sh --fail-on-skip
+```
+
+Release verification wrapper with customer UX coverage:
+
+```bash
+bash scripts/release-check.sh --with-customer-ux
+```
+
+By default the customer UX suite may return `SKIP` when Docker or loopback
+support is missing. Use `--strict-prereqs` on the individual scripts when you
+want those host capability gaps to fail, or `--fail-on-skip` on the umbrella
+runner when you want any skipped journey to fail the suite.
+
+For dataset and intelligence verification on hosts where the local mock server
+is inconvenient, `scripts/customer-data-e2e.sh` accepts an external
+OpenAI-compatible endpoint:
+
+```bash
+bash scripts/customer-data-e2e.sh --analyze-endpoint https://your-endpoint.example/v1
 ```
 
 Expected today:
@@ -271,6 +309,7 @@ Expected today:
 ## Related Pages
 
 - [`README.md`](../README.md)
+- [`docs/customer-ux-e2e.md`](../docs/customer-ux-e2e.md)
 - [`examples/README.md`](../examples/README.md)
 - [`crates/ebpf-tracker-events/README.md`](../crates/ebpf-tracker-events/README.md)
 - [`crates/ebpf-tracker-dataset/README.md`](../crates/ebpf-tracker-dataset/README.md)

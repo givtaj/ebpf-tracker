@@ -58,13 +58,14 @@ Without `--replay`, the wrapper traces a command session through
 `ebpf-tracker`. If no command is supplied, it defaults to:
 
 ```bash
-./target/debug/ebpf-tracker demo session-io-demo
+ebpf-tracker demo session-io-demo
 ```
 
-If the command starts with `ebpf-tracker` or `./target/debug/ebpf-tracker`,
-the wrapper preserves that command and injects JSONL logging defaults when they
-are missing. The `demo` shorthand is also rewritten to the repo-local tracker
-binary.
+If `ebpf-tracker` is not available on `PATH`, the wrapper falls back to
+`./target/debug/ebpf-tracker` for clone-local workflows. If the command starts
+with `ebpf-tracker` or `./target/debug/ebpf-tracker`, the wrapper preserves
+that command and injects JSONL logging defaults when they are missing. The
+`demo` shorthand is rewritten to whichever tracker binary was resolved.
 
 The injected defaults are:
 
@@ -118,7 +119,7 @@ The live viewer also discovers recorded `.log` files under the repository
 
 - This crate is browser-first; it does not expose a separate native TUI.
 - Replay controls are disabled in live-stream mode.
-- The default live target is the repo-local tracker demo command, not a generic
-  shell command.
+- The default live target is the tracker demo command, not a generic shell
+  command.
 - The bundled replays are fixed fixtures, not an exhaustive archive of all
   possible sessions.

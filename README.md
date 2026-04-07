@@ -17,20 +17,22 @@ ebpf-tracker cargo run
 Expect the full wrapped session, including build tooling such as `cargo`,
 `rustc`, and linkers before your app starts.
 
-If you want the product experience first from a local checkout, use one of the
-demo/dashboard entry points:
+If you want the product experience first, use one of the demo/dashboard entry
+points:
 
 ```bash
-cargo demo --dashboard session-io-demo
-cargo see
+ebpf-tracker demo --dashboard session-io-demo
+ebpf-tracker see
 ```
 
 Run either command, not both at once. Each command opens the browser dashboard,
-preserves replay logs, and is a supported first-run path for the bundled demos.
-If you are invoking a repo-built binary directly, the same entry points are
-`ebpf-tracker demo --dashboard session-io-demo` and `ebpf-tracker see`. The
+preserves replay logs, and is a supported first-run path for bundled demos. The
 `cargo demo`, `cargo see`, and `cargo viewer` aliases are clone-only
 conveniences for people working from this repository.
+
+The customer UX suite is documented in [`docs/customer-ux-e2e.md`](./docs/customer-ux-e2e.md).
+Its scripts may return `SKIP` on hosts that lack Docker or loopback support;
+maintainers can force those capability gaps to fail with `--strict-prereqs`.
 
 This README stays intentionally high level. The root should explain the product
 and the workspace shape. Detailed CLI behavior, install steps, and run modes
@@ -54,7 +56,7 @@ examples and operational behavior.
 
 ## Workspace Map
 
-- **Root CLI (`ebpf-tracker`)**: installable command-line entry point, runtime orchestration, config loading, `demo`, `see`, and the experimental `attach` scaffold. Source lives under [`src/`](./src).
+- **Root CLI (`ebpf-tracker`)**: installable command-line entry point, runtime orchestration, config loading, `demo`, `see`, and experimental `attach` support (live `inspektor-gadget` on `k8s`/`aws-eks`, scaffold for other targets). Source lives under [`src/`](./src).
 - **`crates/ebpf-tracker-events`**: shared event schema, line parsers, and session aggregation helpers used across the workspace. [README](./crates/ebpf-tracker-events/README.md)
 - **`crates/ebpf-tracker-dataset`**: dataset bundle writer and analyzer for JSONL streams and replay logs. [README](./crates/ebpf-tracker-dataset/README.md)
 - **`crates/ebpf-tracker-otel`**: OTLP exporter plus local Jaeger helper commands. [README](./crates/ebpf-tracker-otel/README.md)
@@ -85,6 +87,7 @@ bash scripts/dashboard-smoke.sh
 ## More Docs
 
 - [`docs/cli.md`](./docs/cli.md)
+- [`docs/customer-ux-e2e.md`](./docs/customer-ux-e2e.md)
 - [`examples/README.md`](./examples/README.md)
 - [`docs/trace-payment-engine.md`](./docs/trace-payment-engine.md)
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md)

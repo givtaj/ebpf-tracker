@@ -5,8 +5,10 @@ This directory contains runnable demo projects for `ebpf-tracker`.
 These examples are for people working from a local clone of
 `ebpf-tracker`. They are not installed by `cargo install`.
 
-`cargo install` does not bundle these demo manifests. Use a local checkout, or
-a repo-built `ebpf-tracker` binary that can still resolve that checkout.
+Installed binaries can still run `ebpf-tracker demo` and `ebpf-tracker see`
+because the CLI bundles demo assets and materializes them into cache on demand.
+This directory remains the source of truth for clone-local editing and `cargo`
+aliases.
 
 Generated example outputs such as `logs/` and `dist/` appear only after you run
 the demos locally. They are runtime artifacts, not committed release assets.

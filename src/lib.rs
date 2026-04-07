@@ -39,6 +39,7 @@ const GENERATED_RUNTIME_OVERRIDE_FILE_NAME: &str = "generated-runtime.override.y
 const DEFAULT_EXAMPLE_NAME: &str = "session-io-demo";
 const EXAMPLES_DIR_NAME: &str = "examples";
 const DEMO_MANIFEST_FILE_NAME: &str = "ebpf-demo.toml";
+const GENERATED_DEMO_WORKSPACE_ROOT_PREFIX: &str = "demo-workspace-v";
 const DEFAULT_DASHBOARD_PORT: u16 = 43115;
 const INTERACTIVE_PTY_ENV_NAME: &str = "EBPF_TRACKER_INTERACTIVE_PTY";
 const DEMO_ENV_NAME: &str = "EBPF_TRACKER_DEMO_NAME";
@@ -47,6 +48,96 @@ const DEMO_ENV_PRODUCT_TAGLINE: &str = "EBPF_TRACKER_DEMO_PRODUCT_TAGLINE";
 const DEMO_ENV_SPONSOR_NAME: &str = "EBPF_TRACKER_DEMO_SPONSOR_NAME";
 const DEMO_ENV_SPONSOR_MESSAGE: &str = "EBPF_TRACKER_DEMO_SPONSOR_MESSAGE";
 const DEMO_ENV_SPONSOR_URL: &str = "EBPF_TRACKER_DEMO_SPONSOR_URL";
+const EMBEDDED_DEMO_FILES: &[(&str, &str)] = &[
+    (
+        "examples/session-io-demo/ebpf-demo.toml",
+        include_str!("../examples/session-io-demo/ebpf-demo.toml"),
+    ),
+    (
+        "examples/session-io-demo/Cargo.toml",
+        include_str!("../examples/session-io-demo/Cargo.toml"),
+    ),
+    (
+        "examples/session-io-demo/build.rs",
+        include_str!("../examples/session-io-demo/build.rs"),
+    ),
+    (
+        "examples/session-io-demo/src/main.rs",
+        include_str!("../examples/session-io-demo/src/main.rs"),
+    ),
+    (
+        "examples/session-io-demo/input/message.txt",
+        include_str!("../examples/session-io-demo/input/message.txt"),
+    ),
+    (
+        "examples/session-io-demo/ebpf-tracker.toml",
+        include_str!("../examples/session-io-demo/ebpf-tracker.toml"),
+    ),
+    (
+        "examples/postcard-generator-rust/ebpf-demo.toml",
+        include_str!("../examples/postcard-generator-rust/ebpf-demo.toml"),
+    ),
+    (
+        "examples/postcard-generator-rust/Cargo.toml",
+        include_str!("../examples/postcard-generator-rust/Cargo.toml"),
+    ),
+    (
+        "examples/postcard-generator-rust/src/main.rs",
+        include_str!("../examples/postcard-generator-rust/src/main.rs"),
+    ),
+    (
+        "examples/postcard-generator-rust/input/title.txt",
+        include_str!("../examples/postcard-generator-rust/input/title.txt"),
+    ),
+    (
+        "examples/postcard-generator-rust/input/message.txt",
+        include_str!("../examples/postcard-generator-rust/input/message.txt"),
+    ),
+    (
+        "examples/postcard-generator-rust/input/palette.txt",
+        include_str!("../examples/postcard-generator-rust/input/palette.txt"),
+    ),
+    (
+        "examples/postcard-generator-rust/templates/postcard.html.tpl",
+        include_str!("../examples/postcard-generator-rust/templates/postcard.html.tpl"),
+    ),
+    (
+        "examples/postcard-generator-rust/ebpf-tracker.toml",
+        include_str!("../examples/postcard-generator-rust/ebpf-tracker.toml"),
+    ),
+    (
+        "examples/postcard-generator-node/ebpf-demo.toml",
+        include_str!("../examples/postcard-generator-node/ebpf-demo.toml"),
+    ),
+    (
+        "examples/postcard-generator-node/package.json",
+        include_str!("../examples/postcard-generator-node/package.json"),
+    ),
+    (
+        "examples/postcard-generator-node/src/generate.js",
+        include_str!("../examples/postcard-generator-node/src/generate.js"),
+    ),
+    (
+        "examples/postcard-generator-node/input/title.txt",
+        include_str!("../examples/postcard-generator-node/input/title.txt"),
+    ),
+    (
+        "examples/postcard-generator-node/input/message.txt",
+        include_str!("../examples/postcard-generator-node/input/message.txt"),
+    ),
+    (
+        "examples/postcard-generator-node/input/palette.txt",
+        include_str!("../examples/postcard-generator-node/input/palette.txt"),
+    ),
+    (
+        "examples/postcard-generator-node/templates/postcard.html.tpl",
+        include_str!("../examples/postcard-generator-node/templates/postcard.html.tpl"),
+    ),
+    (
+        "examples/postcard-generator-node/ebpf-tracker.toml",
+        include_str!("../examples/postcard-generator-node/ebpf-tracker.toml"),
+    ),
+];
 const GENERATED_EXEC_PROBE: &str = r#"tracepoint:syscalls:sys_enter_execve
 /comm != "bpftrace"/
 {
@@ -107,6 +198,18 @@ struct DemoManifest {
     command: Vec<String>,
     clean_command: Option<Vec<String>>,
     branding: DemoBranding,
+}
+
+#[derive(Debug)]
+struct DemoWorkspace {
+    root: PathBuf,
+    source: DemoWorkspaceSource,
+}
+
+#[derive(Debug)]
+enum DemoWorkspaceSource {
+    RepositoryCheckout,
+    EmbeddedCache { cache_root: PathBuf },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -272,7 +375,7 @@ fn print_usage() {
     eprintln!(
         "Usage: ebpf-tracker [--probe <file-or-name>] [--config <path>] [--log-enable] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--runtime <auto|rust|node>] [--dashboard] [--dashboard-port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [--intelligence-endpoint <url>] <command> [args...]"
     );
-    eprintln!("Usage: ebpf-tracker attach <docker|k8s|aws-eks|aws-ecs> [--backend <inspektor-gadget|tetragon>] [--namespace <ns>] [--selector <label-selector>] [--pod <name>] [--cluster <name>] [--region <aws-region>] [--service <name>] [--task <id>] [--container <name>] [experimental scaffold]");
+    eprintln!("Usage: ebpf-tracker attach <docker|k8s|aws-eks|aws-ecs> [--backend <inspektor-gadget|tetragon>] [--namespace <ns>] [--selector <label-selector>] [--pod <name>] [--cluster <name>] [--region <aws-region>] [--service <name>] [--task <id>] [--container <name>] [experimental]");
     eprintln!("Usage: ebpf-tracker demo [--list] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--dashboard] [--dashboard-port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [example-name]");
     eprintln!("Usage: ebpf-tracker see [--port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [example-name]");
     eprintln!("Default emit mode: raw");
@@ -281,7 +384,7 @@ fn print_usage() {
     eprintln!("Default dashboard port: {DEFAULT_DASHBOARD_PORT}");
     eprintln!("First run: ebpf-tracker /bin/true");
     eprintln!("Trace your app: ebpf-tracker cargo run");
-    eprintln!("Try the dashboard from a checkout: cargo demo --dashboard session-io-demo");
+    eprintln!("Try the dashboard demo: ebpf-tracker see");
     eprintln!("Example: ebpf-tracker cargo run");
     eprintln!("Example: ebpf-tracker npm test");
     eprintln!("Example: ebpf-tracker --config ebpf-tracker.toml cargo run");
@@ -304,11 +407,9 @@ fn print_usage() {
     eprintln!("Clone-only helpers: cargo demo, cargo see, cargo viewer");
     eprintln!("The see subcommand is a shortcut for the dashboard demo experience.");
     eprintln!(
-        "The demo and see subcommands require a local ebpf-tracker checkout or a repo-built ebpf-tracker binary."
+        "The demo and see subcommands prefer a local checkout but fall back to embedded demo assets when needed."
     );
-    eprintln!(
-        "The attach subcommand is experimental scaffold/plan mode and does not start tracing yet."
-    );
+    eprintln!("Attach currently executes inspektor-gadget for k8s/aws-eks targets; docker/aws-ecs and tetragon paths remain scaffold-only.");
 }
 
 fn resolve_probe_path(raw_probe: &str) -> String {
@@ -1527,15 +1628,78 @@ fn repo_root_from(start_dir: &Path) -> Result<PathBuf, String> {
         }
     }
 
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    if is_repo_root(&manifest_dir) {
-        return Ok(manifest_dir);
-    }
-
     Err(
         "demo mode requires a local ebpf-tracker checkout or a repo-built ebpf-tracker binary"
             .to_string(),
     )
+}
+
+fn resolve_demo_workspace(start_dir: &Path) -> Result<DemoWorkspace, String> {
+    if let Ok(repo_root) = repo_root_from(start_dir) {
+        return Ok(DemoWorkspace {
+            root: repo_root,
+            source: DemoWorkspaceSource::RepositoryCheckout,
+        });
+    }
+
+    ensure_embedded_demo_workspace(demo_cache_root_candidates())
+}
+
+fn ensure_embedded_demo_workspace(cache_roots: Vec<PathBuf>) -> Result<DemoWorkspace, String> {
+    let mut errors = Vec::new();
+
+    for root in cache_roots {
+        let workspace_root = root.join(format!(
+            "{GENERATED_DEMO_WORKSPACE_ROOT_PREFIX}{}",
+            env!("CARGO_PKG_VERSION")
+        ));
+        let result = (|| -> Result<(), String> {
+            write_embedded_demo_workspace(&workspace_root)?;
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                return Ok(DemoWorkspace {
+                    root: workspace_root,
+                    source: DemoWorkspaceSource::EmbeddedCache { cache_root: root },
+                });
+            }
+            Err(err) => errors.push(err),
+        }
+    }
+
+    Err(format!(
+        "failed to materialize embedded demo workspace: {}",
+        errors.join("; ")
+    ))
+}
+
+fn write_embedded_demo_workspace(workspace_root: &Path) -> Result<(), String> {
+    for (relative_path, content) in EMBEDDED_DEMO_FILES {
+        write_if_changed(&workspace_root.join(relative_path), content)?;
+    }
+    Ok(())
+}
+
+fn demo_cache_root_candidates() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+
+    if let Ok(path) = env::var("EBPF_TRACKER_CACHE_DIR") {
+        roots.push(PathBuf::from(path));
+        return roots;
+    }
+
+    if let Ok(path) = env::var("XDG_CACHE_HOME") {
+        roots.push(PathBuf::from(path).join("ebpf-tracker"));
+    }
+
+    if let Ok(path) = env::var("HOME") {
+        roots.push(PathBuf::from(path).join(".cache").join("ebpf-tracker"));
+    }
+
+    roots.push(env::temp_dir().join("ebpf-tracker"));
+    roots
 }
 
 fn demo_manifest_path(example_dir: &Path) -> PathBuf {
@@ -1653,10 +1817,19 @@ fn clean_example(example_dir: &Path, clean_command: Option<&[String]>) -> Result
 fn run_demo(demo_args: DemoArgs) -> Result<i32, String> {
     let current_dir =
         env::current_dir().map_err(|err| format!("failed to read current dir: {err}"))?;
-    let repo_root = repo_root_from(&current_dir)?;
+    let workspace = resolve_demo_workspace(&current_dir)?;
+    let repo_root = &workspace.root;
+
+    if let DemoWorkspaceSource::EmbeddedCache { cache_root } = &workspace.source {
+        eprintln!(
+            "demo assets: using embedded examples from {} (cache root: {})",
+            repo_root.join(EXAMPLES_DIR_NAME).display(),
+            cache_root.display()
+        );
+    }
 
     if demo_args.list_examples {
-        for example in available_examples(&repo_root)? {
+        for example in available_examples(repo_root)? {
             println!("{example}");
         }
         return Ok(0);
@@ -1665,7 +1838,7 @@ fn run_demo(demo_args: DemoArgs) -> Result<i32, String> {
     let example_name = demo_args
         .example_name
         .unwrap_or_else(|| DEFAULT_EXAMPLE_NAME.to_string());
-    let example_dir = resolve_example_dir(&repo_root, &example_name)?;
+    let example_dir = resolve_example_dir(repo_root, &example_name)?;
     let manifest = load_demo_manifest(&example_dir)?;
     let session_record = manifest.branding.session_record(&example_name);
     let extra_env = manifest.branding.extra_env(&example_name);
@@ -1775,11 +1948,12 @@ pub fn main_entry() -> i32 {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_demo_args_for_dashboard, build_generated_probe, build_runtime_override,
-        build_tracker_args_for_dashboard, load_config, load_demo_manifest, parse_args,
-        repo_root_from, should_report_runtime_resolution, stream_record_for_bytes, CliArgs,
-        DashboardOptions, EmitMode, IntelligenceOptions, ParseOutcome, ResolvedRunPlan,
-        RuntimeConfig, TransportMode, DEFAULT_DASHBOARD_PORT,
+        available_examples, build_demo_args_for_dashboard, build_generated_probe,
+        build_runtime_override, build_tracker_args_for_dashboard, ensure_embedded_demo_workspace,
+        load_config, load_demo_manifest, parse_args, repo_root_from, resolve_example_dir,
+        should_report_runtime_resolution, stream_record_for_bytes, CliArgs, DashboardOptions,
+        EmitMode, IntelligenceOptions, ParseOutcome, ResolvedRunPlan, RuntimeConfig, TransportMode,
+        DEFAULT_DASHBOARD_PORT,
     };
     use crate::attach::{AttachBackend, AttachPlatform};
     use crate::dashboard::parse_dashboard_url;
@@ -2278,6 +2452,48 @@ mod tests {
         assert_eq!(repo_root, expected_repo_root);
 
         let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn embedded_demo_workspace_materializes_manifests_for_demo_and_see() {
+        let cache_root = unique_temp_dir("ebpf-demo-embedded-cache");
+        fs::create_dir_all(&cache_root).expect("cache root should be created");
+
+        let workspace = ensure_embedded_demo_workspace(vec![cache_root.clone()])
+            .expect("embedded demo workspace should be materialized");
+
+        let examples = available_examples(&workspace.root).expect("examples should be listed");
+        assert_eq!(
+            examples,
+            vec![
+                "postcard-generator-node".to_string(),
+                "postcard-generator-rust".to_string(),
+                "session-io-demo".to_string()
+            ]
+        );
+
+        let session_demo_dir =
+            resolve_example_dir(&workspace.root, "session-io-demo").expect("example should exist");
+        let manifest = load_demo_manifest(&session_demo_dir).expect("manifest should load");
+        assert_eq!(manifest.runtime_selection, RuntimeSelection::Rust);
+        assert_eq!(
+            manifest.command,
+            vec!["cargo".to_string(), "run".to_string()]
+        );
+        assert!(session_demo_dir.join("Cargo.toml").is_file());
+        assert!(session_demo_dir.join("src").join("main.rs").is_file());
+        assert!(session_demo_dir.join("input").join("message.txt").is_file());
+        assert!(session_demo_dir.join("ebpf-tracker.toml").is_file());
+
+        let postcard_rust_dir = resolve_example_dir(&workspace.root, "postcard-generator-rust")
+            .expect("example should exist");
+        assert!(postcard_rust_dir.join("ebpf-tracker.toml").is_file());
+
+        let postcard_node_dir = resolve_example_dir(&workspace.root, "postcard-generator-node")
+            .expect("example should exist");
+        assert!(postcard_node_dir.join("ebpf-tracker.toml").is_file());
+
+        let _ = fs::remove_dir_all(cache_root);
     }
 
     #[test]
