@@ -15,3 +15,4 @@ examples/**/logs/
 examples/**/Cargo.lock
 examples/**/dist/
 probes/generated-config.bt
+output/
