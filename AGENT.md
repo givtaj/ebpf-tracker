@@ -9,13 +9,13 @@
 
 ## Commit Logging
 
-- Keep [CHANGELOG.md](/Users/aidin/code/canvas/eBPF-Rust/CHANGELOG.md) updated as work progresses.
+- Keep [CHANGELOG.md](/Users/aidin/code/canvas/ebpf-tracker/CHANGELOG.md) updated as work progresses.
 - Before making a commit, add a concise changelog entry that matches the change being committed.
 - Prefer including the changelog update in the same commit as the code or docs change it describes.
 
 ## Task Logging
 
-- Keep [TASKLOG.md](/Users/aidin/code/canvas/eBPF-Rust/TASKLOG.md) updated as work progresses.
+- Keep [TASKLOG.md](/Users/aidin/code/canvas/ebpf-tracker/TASKLOG.md) updated as work progresses.
 - Before starting substantial work or spawning a subagent, add or update the task entry in `TASKLOG.md`.
 - Log the task title, assigned agent or owner, status, and output file when available.
 - Update the same task entry as the work moves from planned to running to completed.

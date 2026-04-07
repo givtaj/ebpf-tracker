@@ -13,6 +13,9 @@ This file tracks notable repo changes in progress on this branch.
 - Refreshed the root onboarding copy, CLI help, and example docs so installed-binary tracing is separated cleanly from checkout-only `demo` and `see` flows.
 - Reworked the live trace viewer layout and replay controls, including clearer status grouping, replay-library placement, reduced-motion handling, and tracker-binary resolution that can use either `ebpf-tracker` on `PATH` or a repo build.
 - Added a black-box release smoke path for viewer replay, dataset ingest/analyze, and traced demo commands, plus CI and release workflow integration for the non-Docker checks.
+- Added a customer UX E2E suite and umbrella runner that cover first-run CLI, trace-your-app, demo/viewer, and dataset/intelligence journeys from the customer point of view.
+- Hardened the customer UX E2E scripts with explicit `SKIP` semantics, `--strict-prereqs` enforcement mode, and external analyze-endpoint support for constrained environments.
+- Made CI and release workflow UX checks capability-aware so they prefer the full customer UX suite when prerequisites are available and otherwise fall back to smoke checks.
 - Fixed the repo-local `cargo demo` and `cargo see` aliases so they point at the current `ebpf-tracker` binary name again.
 
 ## v0.1.0 - 2026-04-04
