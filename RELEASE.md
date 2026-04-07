@@ -38,6 +38,9 @@ cargo run --locked --bin ebpf-tracker -- --help
 cargo run --locked --bin ebpf-tracker -- demo --list
 ```
 
+That default gate intentionally stays cheap and deterministic for
+GitHub-hosted CI.
+
 Before tagging, also run the real tracer smoke path on a maintainer machine
 with Docker support:
 
@@ -48,6 +51,34 @@ bash scripts/release-check.sh --with-runtime-smoke --with-demo-smoke
 That extra step is intentionally local for now. It validates both the minimal
 `/bin/true` path and a real traced Rust demo command, while the
 GitHub-hosted workflow stays focused on non-privileged smoke checks.
+
+To validate the full customer journey suite end-to-end (CLI first run, trace
+your app, demo/viewer, replay, and dataset/intelligence), run:
+
+```bash
+bash scripts/release-check.sh --with-customer-ux
+```
+
+or directly:
+
+```bash
+bash scripts/customer-ux-check.sh
+```
+
+That gate is strict: it expects Docker plus a bindable loopback interface.
+The underlying customer UX scripts may still report `SKIP` on host capability
+gaps in non-strict mode; use `--strict-prereqs` on the individual journeys or
+`--fail-on-skip` on the umbrella runner when you want those gaps to fail the
+run instead.
+Use `bash scripts/customer-data-e2e.sh --analyze-endpoint <url>` when you want
+dataset/intelligence verification against an external OpenAI-compatible
+endpoint instead of the local mock-server path.
+
+The release workflow will prefer `scripts/customer-ux-check.sh` when it exists
+in the tagged checkout and the runner can satisfy the Docker plus loopback
+prerequisites. If the suite is missing or the runner cannot support it, the
+workflow falls back to `dashboard-smoke` plus `dataset-smoke` rather than
+failing for a host-capability reason.
 
 If you are validating the repo-local viewer surface, include:
 

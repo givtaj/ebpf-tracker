@@ -9,10 +9,11 @@ run_dashboard_smoke=0
 run_dataset_smoke=0
 run_perf_smoke=0
 run_attach_smoke=0
+run_customer_ux=0
 
 usage() {
   cat <<'EOF'
-Usage: bash scripts/release-check.sh [--with-runtime-smoke] [--with-demo-smoke] [--with-dashboard-smoke] [--with-dataset-smoke] [--with-perf-smoke] [--with-attach-smoke]
+Usage: bash scripts/release-check.sh [--with-runtime-smoke] [--with-demo-smoke] [--with-dashboard-smoke] [--with-dataset-smoke] [--with-perf-smoke] [--with-attach-smoke] [--with-customer-ux]
 
 Default behavior runs the fast generic release checks that are suitable for
 GitHub-hosted CI.
@@ -32,7 +33,18 @@ Use --with-perf-smoke to additionally exercise the perf transport path during
 runtime smoke.
 
 Use --with-attach-smoke to run the lightweight attach validation smoke.
+
+Use --with-customer-ux to run the full customer journey end-to-end suite via
+scripts/customer-ux-check.sh (if present in this checkout). This flag is
+strict and fails if Docker or loopback prerequisites are missing.
 EOF
+}
+
+customer_ux_prereqs_met() {
+  command -v docker >/dev/null 2>&1 || return 1
+  docker info >/dev/null 2>&1 || return 1
+  command -v python3 >/dev/null 2>&1 || return 1
+  python3 -c 'import socket; sock = socket.socket(); sock.bind(("127.0.0.1", 0)); sock.close()' >/dev/null 2>&1
 }
 
 while [[ $# -gt 0 ]]; do
@@ -61,6 +73,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --with-attach-smoke)
       run_attach_smoke=1
+      shift
+      ;;
+    --with-customer-ux)
+      run_customer_ux=1
       shift
       ;;
     -h|--help)
@@ -133,4 +149,21 @@ if [[ "${run_attach_smoke}" -eq 1 ]]; then
   bash scripts/attach-smoke.sh
 else
   echo "[release-check] attach smoke skipped; run bash scripts/release-check.sh --with-attach-smoke to validate the scaffolded attach path"
+fi
+
+if [[ "${run_customer_ux}" -eq 1 ]]; then
+  if [[ -f "scripts/customer-ux-check.sh" ]]; then
+    if customer_ux_prereqs_met; then
+      echo "[release-check] bash scripts/customer-ux-check.sh"
+      bash scripts/customer-ux-check.sh
+    else
+      echo "[release-check] customer UX suite requested but this machine cannot satisfy Docker and loopback prerequisites"
+      exit 1
+    fi
+  else
+    echo "[release-check] customer UX suite requested but scripts/customer-ux-check.sh is missing in this checkout"
+    exit 1
+  fi
+else
+  echo "[release-check] customer UX suite skipped; run bash scripts/release-check.sh --with-customer-ux to validate end-to-end customer journeys"
 fi

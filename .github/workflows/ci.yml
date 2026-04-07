@@ -32,6 +32,7 @@ jobs:
   smoke:
     runs-on: ubuntu-latest
     needs: test
+    if: ${{ github.event_name == 'pull_request' || github.ref != 'refs/heads/main' }}
 
     steps:
       - name: Checkout
@@ -53,3 +54,77 @@ jobs:
 
       - name: Dataset smoke
         run: bash scripts/dataset-smoke.sh
+
+  customer-ux:
+    runs-on: ubuntu-latest
+    needs: test
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Check customer UX capabilities
+        id: customer_ux_capabilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          can_run_customer_ux=0
+
+          if [[ ! -f scripts/customer-ux-check.sh ]]; then
+            echo "customer_ux_available=0" >> "${GITHUB_OUTPUT}"
+            echo "customer_ux_reason=customer UX suite is missing in this checkout" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "customer_ux_available=0" >> "${GITHUB_OUTPUT}"
+            echo "customer_ux_reason=Docker CLI is unavailable on this runner" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if ! docker info >/dev/null 2>&1; then
+            echo "customer_ux_available=0" >> "${GITHUB_OUTPUT}"
+            echo "customer_ux_reason=Docker daemon is unavailable on this runner" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if ! command -v python3 >/dev/null 2>&1; then
+            echo "customer_ux_available=0" >> "${GITHUB_OUTPUT}"
+            echo "customer_ux_reason=python3 is unavailable for the loopback bind preflight" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          if ! python3 -c 'import socket; sock = socket.socket(); sock.bind(("127.0.0.1", 0)); sock.close()' >/dev/null 2>&1; then
+            echo "customer_ux_available=0" >> "${GITHUB_OUTPUT}"
+            echo "customer_ux_reason=this runner cannot bind 127.0.0.1 for the dataset analyze preflight" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          can_run_customer_ux=1
+          echo "customer_ux_available=${can_run_customer_ux}" >> "${GITHUB_OUTPUT}"
+          echo "customer_ux_reason=runner prerequisites satisfied" >> "${GITHUB_OUTPUT}"
+
+      - name: Customer UX suite or smoke fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ steps.customer_ux_capabilities.outputs.customer_ux_available }}" == "1" ]]; then
+            bash scripts/customer-ux-check.sh
+          else
+            echo "customer-ux suite unavailable: ${{ steps.customer_ux_capabilities.outputs.customer_ux_reason }}"
+            echo "running smoke fallback instead"
+            bash scripts/dashboard-smoke.sh --check
+            bash scripts/dataset-smoke.sh
+          fi
