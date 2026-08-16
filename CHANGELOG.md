@@ -4,6 +4,10 @@ This file tracks notable repo changes in progress on this branch.
 
 ## Unreleased
 
+### Added
+
+- Added a terminal-first `ebpf-tracker monitor` droplet overview with `/proc`, bounded Docker/eBPF health reads, sanitized host-derived text, and host-readiness docs for clean Linux development boxes.
+
 ### Fixed
 
 - Switched the tag-driven release workflow to GitHub's current `macos-15-intel` hosted runner label so macOS release builds do not cancel before execution.

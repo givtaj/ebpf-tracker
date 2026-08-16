@@ -20,6 +20,7 @@ use ebpf_tracker_perf::{
 use intelligence::{
     parse_intelligence_arg, IntelligenceOptions, IntelligenceReporter, IntelligenceSupervisor,
 };
+use monitor::{parse_monitor_args, run_monitor, MonitorArgs};
 use runtime::{
     parse_runtime_selection, resolve_compose_file_with_source, resolve_runtime_profile,
     write_if_changed, RuntimeAssetResolution, RuntimeAssetSource, RuntimeProfile, RuntimeSelection,
@@ -30,6 +31,7 @@ mod attach;
 mod compose;
 mod dashboard;
 mod intelligence;
+mod monitor;
 mod runtime;
 
 const DEFAULT_PROBE: &str = "/probes/execve.bt";
@@ -277,6 +279,7 @@ enum ParseOutcome {
     Help,
     Attach(AttachArgs),
     Demo(DemoArgs),
+    Monitor(MonitorArgs),
     Run(CliArgs),
 }
 
@@ -378,6 +381,9 @@ fn print_usage() {
     eprintln!("Usage: ebpf-tracker attach <docker|k8s|aws-eks|aws-ecs> [--backend <inspektor-gadget|tetragon>] [--namespace <ns>] [--selector <label-selector>] [--pod <name>] [--cluster <name>] [--region <aws-region>] [--service <name>] [--task <id>] [--container <name>] [experimental]");
     eprintln!("Usage: ebpf-tracker demo [--list] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--dashboard] [--dashboard-port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [example-name]");
     eprintln!("Usage: ebpf-tracker see [--port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [example-name]");
+    eprintln!(
+        "Usage: ebpf-tracker monitor [--interval-ms <ms>] [--samples <n>|--once] [--no-clear]"
+    );
     eprintln!("Default emit mode: raw");
     eprintln!("Default transport: bpftrace");
     eprintln!("Default runtime: auto");
@@ -402,13 +408,16 @@ fn print_usage() {
     eprintln!("Example: ebpf-tracker demo --dashboard session-io-demo");
     eprintln!("Example: ebpf-tracker see");
     eprintln!("Example: ebpf-tracker see postcard-generator-rust");
+    eprintln!("Example: ebpf-tracker monitor --interval-ms 2000");
+    eprintln!("Example: ebpf-tracker monitor --once --no-clear");
     eprintln!("Repository demo mode: cargo demo --list");
     eprintln!("Repository demo example: cargo demo --emit jsonl session-io-demo");
-    eprintln!("Clone-only helpers: cargo demo, cargo see, cargo viewer");
+    eprintln!("Clone-only helpers: cargo demo, cargo see, cargo viewer, cargo monitor");
     eprintln!("The see subcommand is a shortcut for the dashboard demo experience.");
     eprintln!(
         "The demo and see subcommands prefer a local checkout but fall back to embedded demo assets when needed."
     );
+    eprintln!("Monitor is a terminal-first droplet overview; it uses /proc plus read-only Docker and bpftool checks when available.");
     eprintln!("Attach currently executes inspektor-gadget for k8s/aws-eks targets; docker/aws-ecs and tetragon paths remain scaffold-only.");
 }
 
@@ -460,6 +469,16 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
     }
     if matches!(args.first().map(String::as_str), Some("see")) {
         return parse_see_args(&args[1..]);
+    }
+    if matches!(args.first().map(String::as_str), Some("monitor")) {
+        let monitor_args = &args[1..];
+        if monitor_args
+            .iter()
+            .any(|arg| matches!(arg.as_str(), "-h" | "--help" | "help"))
+        {
+            return Ok(ParseOutcome::Help);
+        }
+        return Ok(ParseOutcome::Monitor(parse_monitor_args(monitor_args)?));
     }
 
     let mut probe_file = None;
@@ -1900,6 +1919,7 @@ fn run() -> Result<i32, String> {
             Ok(0)
         }
         ParseOutcome::Attach(attach_args) => run_attach(attach_args),
+        ParseOutcome::Monitor(monitor_args) => run_monitor(monitor_args),
         ParseOutcome::Demo(demo_args) => {
             if demo_args.dashboard.enabled {
                 if demo_args.list_examples {
@@ -1952,8 +1972,8 @@ mod tests {
         build_runtime_override, build_tracker_args_for_dashboard, ensure_embedded_demo_workspace,
         load_config, load_demo_manifest, parse_args, repo_root_from, resolve_example_dir,
         should_report_runtime_resolution, stream_record_for_bytes, CliArgs, DashboardOptions,
-        EmitMode, IntelligenceOptions, ParseOutcome, ResolvedRunPlan, RuntimeConfig, TransportMode,
-        DEFAULT_DASHBOARD_PORT,
+        EmitMode, IntelligenceOptions, MonitorArgs, ParseOutcome, ResolvedRunPlan, RuntimeConfig,
+        TransportMode, DEFAULT_DASHBOARD_PORT,
     };
     use crate::attach::{AttachBackend, AttachPlatform};
     use crate::dashboard::parse_dashboard_url;
@@ -2214,6 +2234,32 @@ mod tests {
                 );
             }
             _ => panic!("expected run outcome"),
+        }
+    }
+
+    #[test]
+    fn monitor_args_parse_terminal_tui_options() {
+        let parsed = parse_args(vec![
+            "monitor".to_string(),
+            "--interval-ms".to_string(),
+            "250".to_string(),
+            "--samples=2".to_string(),
+            "--no-clear".to_string(),
+        ])
+        .expect("args should parse");
+
+        match parsed {
+            ParseOutcome::Monitor(monitor_args) => {
+                assert_eq!(
+                    monitor_args,
+                    MonitorArgs {
+                        interval_ms: 250,
+                        samples: Some(2),
+                        clear_screen: false,
+                    }
+                );
+            }
+            _ => panic!("expected monitor outcome"),
         }
     }
 

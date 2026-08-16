@@ -17,6 +17,15 @@ ebpf-tracker cargo run
 Expect the full wrapped session, including build tooling such as `cargo`,
 `rustc`, and linkers before your app starts.
 
+If you want a terminal-first host overview on an SSH droplet, use:
+
+```bash
+ebpf-tracker monitor --once --no-clear
+```
+
+From a checkout, `bash scripts/host-ebpf-readiness.sh` prints a no-install
+inventory for host eBPF, Docker, kernel, and package readiness.
+
 If you want the product experience first, use one of the demo/dashboard entry
 points:
 
@@ -45,6 +54,8 @@ belong in [`docs/cli.md`](./docs/cli.md).
 - supports `bpftrace` by default and `perf trace` as an alternate transport
 - can emit raw terminal output or JSONL event streams
 - can launch a repo-local dashboard and replay stored sessions
+- can render a terminal-first host monitor for SSH droplets and development boxes
+- includes a no-install Linux host readiness script for clean eBPF setup planning
 
 If you run `ebpf-tracker cargo run`, you should expect to see the whole session:
 `cargo`, `rustc`, linkers, and then your app. The same idea applies to Node
@@ -56,7 +67,7 @@ examples and operational behavior.
 
 ## Workspace Map
 
-- **Root CLI (`ebpf-tracker`)**: installable command-line entry point, runtime orchestration, config loading, `demo`, `see`, and experimental `attach` support (live `inspektor-gadget` on `k8s`/`aws-eks`, scaffold for other targets). Source lives under [`src/`](./src).
+- **Root CLI (`ebpf-tracker`)**: installable command-line entry point, runtime orchestration, terminal `monitor`, config loading, `demo`, `see`, and experimental `attach` support (live `inspektor-gadget` on `k8s`/`aws-eks`, scaffold for other targets). Source lives under [`src/`](./src).
 - **`crates/ebpf-tracker-events`**: shared event schema, line parsers, and session aggregation helpers used across the workspace. [README](./crates/ebpf-tracker-events/README.md)
 - **`crates/ebpf-tracker-dataset`**: dataset bundle writer and analyzer for JSONL streams and replay logs. [README](./crates/ebpf-tracker-dataset/README.md)
 - **`crates/ebpf-tracker-otel`**: OTLP exporter plus local Jaeger helper commands. [README](./crates/ebpf-tracker-otel/README.md)
@@ -88,6 +99,7 @@ bash scripts/dashboard-smoke.sh
 
 - [`docs/cli.md`](./docs/cli.md)
 - [`docs/customer-ux-e2e.md`](./docs/customer-ux-e2e.md)
+- [`docs/host-monitoring.md`](./docs/host-monitoring.md)
 - [`examples/README.md`](./examples/README.md)
 - [`docs/trace-payment-engine.md`](./docs/trace-payment-engine.md)
 - [`CONTRIBUTING.md`](./CONTRIBUTING.md)

@@ -9,6 +9,8 @@ the root-package behavior that does not belong to the extension crates.
 - Rust toolchain
 - Docker Desktop or another Docker engine that supports privileged containers
 - Node.js on the host only if you want the repo-local dashboard/viewer flow
+- `pkg-config` and OpenSSL development headers for Linux source builds (Ubuntu
+  and Debian package them as `pkg-config` and `libssl-dev`)
 
 ## Install
 
@@ -33,14 +35,15 @@ After install, the smallest useful checks are:
 ```bash
 ebpf-tracker --help
 ebpf-tracker /bin/true
+ebpf-tracker monitor --once --no-clear
 ebpf-tracker cargo run
 ebpf-tracker npm run dev
 ```
 
 `ebpf-tracker /bin/true` is the smallest real tracer smoke test and still
 requires Docker support. The `cargo demo`, `cargo see`, `cargo dataset`,
-`cargo otel`, `cargo jaeger`, and `cargo viewer` helpers remain Cargo aliases
-for people working from a clone of this repository.
+`cargo otel`, `cargo jaeger`, `cargo viewer`, and `cargo monitor` helpers
+remain Cargo aliases for people working from a clone of this repository.
 
 Runtime assets are materialized under `~/.cache/ebpf-tracker` by default. Set
 `EBPF_TRACKER_CACHE_DIR=/your/path` to override that location.
@@ -70,6 +73,31 @@ ebpf-tracker --runtime node /bin/sh -lc "npm run dev"
 The tracer follows the full wrapped command session. In practice that means
 Rust sessions often include `cargo`, `rustc`, linkers, and then the final app.
 Node sessions often include `npm`, `node`, package scripts, and subprocesses.
+
+## Terminal Monitor
+
+For SSH-first droplet work, use the terminal monitor instead of the browser
+viewer:
+
+```bash
+ebpf-tracker monitor
+```
+
+Bounded checks for scripts or quick host snapshots:
+
+```bash
+ebpf-tracker monitor --once --no-clear
+ebpf-tracker monitor --interval-ms 1000 --samples 5
+cargo monitor --once --no-clear
+```
+
+The monitor is read-only. It renders Linux `/proc` CPU, memory, swap, load,
+process, and top-process pressure, uses the standard `df` command for disk
+space, then adds Docker and eBPF health panels when those commands are
+available. It does not install packages, start a daemon, or open a browser.
+External command reads have short deadlines; on hardened droplets, unavailable
+Docker or `bpftool` metadata is reported instead of waiting for interactive
+sudo. See [Host Monitoring](./host-monitoring.md) for the SSH-first workflow.
 
 ## Runtime Selection
 
