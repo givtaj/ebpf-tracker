@@ -44,6 +44,7 @@ const DEMO_MANIFEST_FILE_NAME: &str = "ebpf-demo.toml";
 const GENERATED_DEMO_WORKSPACE_ROOT_PREFIX: &str = "demo-workspace-v";
 const DEFAULT_DASHBOARD_PORT: u16 = 43115;
 const INTERACTIVE_PTY_ENV_NAME: &str = "EBPF_TRACKER_INTERACTIVE_PTY";
+const ALLOW_HOST_WIDE_PROBE_ENV_NAME: &str = "EBPF_TRACKER_ALLOW_HOST_WIDE_PROBE";
 const DEMO_ENV_NAME: &str = "EBPF_TRACKER_DEMO_NAME";
 const DEMO_ENV_PRODUCT_NAME: &str = "EBPF_TRACKER_DEMO_PRODUCT_NAME";
 const DEMO_ENV_PRODUCT_TAGLINE: &str = "EBPF_TRACKER_DEMO_PRODUCT_TAGLINE";
@@ -140,28 +141,55 @@ const EMBEDDED_DEMO_FILES: &[(&str, &str)] = &[
         include_str!("../examples/postcard-generator-node/ebpf-tracker.toml"),
     ),
 ];
+const GENERATED_WORKLOAD_SCOPE_START: &str = r#"/*
+ * Workload scope: bpftrace -c exposes the wrapped command as cpid. Track every
+ * thread forked from that command so child processes remain visible without
+ * collecting events from unrelated host workloads.
+ */
+BEGIN
+{
+  @ebpf_tracker_workload_tids[cpid] = 1;
+}
+
+tracepoint:sched:sched_process_fork
+/@ebpf_tracker_workload_tids[args->parent_pid]/
+{
+  @ebpf_tracker_workload_tids[args->child_pid] = 1;
+}
+
+tracepoint:sched:sched_process_exit
+/@ebpf_tracker_workload_tids[tid]/
+{
+  delete(@ebpf_tracker_workload_tids[tid]);
+}
+"#;
+const GENERATED_WORKLOAD_SCOPE_END: &str = r#"END
+{
+  clear(@ebpf_tracker_workload_tids);
+}
+"#;
 const GENERATED_EXEC_PROBE: &str = r#"tracepoint:syscalls:sys_enter_execve
-/comm != "bpftrace"/
+/@ebpf_tracker_workload_tids[tid]/
 {
   printf("execve comm=%s pid=%d\n", comm, pid);
 }
 "#;
 const GENERATED_WRITE_PROBE: &str = r#"tracepoint:syscalls:sys_enter_write
-/comm != "bpftrace" && comm != "dockerd" && comm != "containerd-shim" && comm != "initd"/
+/@ebpf_tracker_workload_tids[tid]/
 {
   printf("write comm=%s pid=%d bytes=%d\n", comm, pid, args->count);
   @writes = count();
 }
 "#;
 const GENERATED_OPEN_PROBE: &str = r#"tracepoint:syscalls:sys_enter_openat
-/comm != "bpftrace" && comm != "dockerd" && comm != "containerd-shim" && comm != "initd"/
+/@ebpf_tracker_workload_tids[tid]/
 {
   printf("openat comm=%s pid=%d file=%s\n", comm, pid, str(args->filename));
   @openat = count();
 }
 "#;
 const GENERATED_CONNECT_PROBE: &str = r#"tracepoint:syscalls:sys_enter_connect
-/comm != "bpftrace" && comm != "dockerd" && comm != "containerd-shim" && comm != "initd"/
+/@ebpf_tracker_workload_tids[tid]/
 {
   printf("connect comm=%s pid=%d fd=%d\n", comm, pid, args->fd);
   @connects = count();
@@ -170,6 +198,7 @@ const GENERATED_CONNECT_PROBE: &str = r#"tracepoint:syscalls:sys_enter_connect
 
 #[derive(Debug)]
 struct CliArgs {
+    allow_host_wide_probe: bool,
     probe_file: Option<String>,
     config_path: Option<PathBuf>,
     log_enable: bool,
@@ -376,7 +405,7 @@ impl RuntimeSelection {
 
 fn print_usage() {
     eprintln!(
-        "Usage: ebpf-tracker [--probe <file-or-name>] [--config <path>] [--log-enable] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--runtime <auto|rust|node>] [--dashboard] [--dashboard-port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [--intelligence-endpoint <url>] <command> [args...]"
+        "Usage: ebpf-tracker [--probe <file-or-name>] [--allow-host-wide-probe] [--config <path>] [--log-enable] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--runtime <auto|rust|node>] [--dashboard] [--dashboard-port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [--intelligence-endpoint <url>] <command> [args...]"
     );
     eprintln!("Usage: ebpf-tracker attach <docker|k8s|aws-eks|aws-ecs> [--backend <inspektor-gadget|tetragon>] [--namespace <ns>] [--selector <label-selector>] [--pod <name>] [--cluster <name>] [--region <aws-region>] [--service <name>] [--task <id>] [--container <name>] [experimental]");
     eprintln!("Usage: ebpf-tracker demo [--list] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--dashboard] [--dashboard-port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [example-name]");
@@ -395,7 +424,7 @@ fn print_usage() {
     eprintln!("Example: ebpf-tracker npm test");
     eprintln!("Example: ebpf-tracker --config ebpf-tracker.toml cargo run");
     eprintln!("Example: ebpf-tracker --probe execve.bt cargo run");
-    eprintln!("Example: ebpf-tracker --probe ./probes/custom.bt cargo run");
+    eprintln!("Example: ebpf-tracker --allow-host-wide-probe --probe ./probes/custom.bt cargo run");
     eprintln!("Example: ebpf-tracker --log-enable cargo test");
     eprintln!("Example: ebpf-tracker --emit jsonl cargo run");
     eprintln!("Example: ebpf-tracker --transport perf --emit jsonl cargo run");
@@ -482,6 +511,7 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
     }
 
     let mut probe_file = None;
+    let mut allow_host_wide_probe = false;
     let mut config_path = None;
     let mut log_enable = false;
     let mut emit_mode = EmitMode::Raw;
@@ -504,6 +534,10 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
                     .ok_or_else(|| "missing value for --probe".to_string())?;
                 probe_file = Some(resolve_probe_path(value));
                 index += 2;
+            }
+            "--allow-host-wide-probe" => {
+                allow_host_wide_probe = true;
+                index += 1;
             }
             "--config" => {
                 let value = args
@@ -611,6 +645,7 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
     }
 
     Ok(ParseOutcome::Run(CliArgs {
+        allow_host_wide_probe,
         probe_file,
         config_path,
         log_enable,
@@ -869,6 +904,9 @@ fn build_generated_probe(config: &ProbeConfig) -> Result<String, String> {
         );
     }
 
+    sections.insert(0, GENERATED_WORKLOAD_SCOPE_START);
+    sections.push(GENERATED_WORKLOAD_SCOPE_END);
+
     Ok(sections.join("\n"))
 }
 
@@ -908,6 +946,11 @@ fn resolve_probe_file(
     compose_file: &Path,
 ) -> Result<String, String> {
     if let Some(probe_file) = &cli_args.probe_file {
+        if probe_file != DEFAULT_PROBE && !cli_args.allow_host_wide_probe {
+            return Err(format!(
+                "custom bpftrace probe {probe_file} is not automatically workload-scoped and may observe host-wide events; pass --allow-host-wide-probe to acknowledge that risk"
+            ));
+        }
         return Ok(probe_file.clone());
     }
 
@@ -1048,13 +1091,18 @@ impl ResolvedRunPlan {
     }
 
     fn build_command(&self, cli_args: &CliArgs, project_dir: &Path) -> Command {
+        let mut extra_env = cli_args.extra_env.clone();
+        if cli_args.allow_host_wide_probe {
+            extra_env.push((ALLOW_HOST_WIDE_PROBE_ENV_NAME.to_string(), "1".to_string()));
+        }
+
         build_compose_command(ComposeRunConfig {
             compose_file: &self.runtime_resolution.compose_file,
             runtime_override_file: self.runtime_override.as_deref(),
             project_dir,
             runtime_profile: self.runtime_profile,
             transport_mode: cli_args.transport_mode,
-            extra_env: &cli_args.extra_env,
+            extra_env: &extra_env,
             probe_file: self.probe_file.as_deref(),
             perf_events: self.perf_events.as_deref(),
             wrapped_command: &cli_args.command,
@@ -1867,6 +1915,7 @@ fn run_demo(demo_args: DemoArgs) -> Result<i32, String> {
 
     run_cli(
         CliArgs {
+            allow_host_wide_probe: false,
             probe_file: None,
             config_path: Some(PathBuf::from(DEFAULT_CONFIG_FILE_NAME)),
             log_enable: demo_args.log_enable,
@@ -1997,6 +2046,61 @@ mod tests {
         assert!(probe.contains("sys_enter_write"));
         assert!(!probe.contains("sys_enter_openat"));
         assert!(!probe.contains("sys_enter_connect"));
+        assert!(probe.starts_with("/*\n * Workload scope:"));
+        assert!(probe.contains("tracepoint:sched:sched_process_fork"));
+        assert_eq!(probe.matches("/@ebpf_tracker_workload_tids[").count(), 4);
+        assert!(probe.contains("clear(@ebpf_tracker_workload_tids)"));
+
+        let default_probe = include_str!("../probes/execve.bt");
+        assert!(default_probe.contains("tracepoint:sched:sched_process_fork"));
+        assert!(default_probe.contains("/@ebpf_tracker_workload_tids[tid]/"));
+    }
+
+    #[test]
+    fn custom_bpftrace_probe_requires_explicit_host_wide_acknowledgement() {
+        fn cli_args(raw: &[&str]) -> CliArgs {
+            let parsed = parse_args(raw.iter().map(|value| (*value).to_string()).collect())
+                .expect("arguments should parse");
+            match parsed {
+                ParseOutcome::Run(args) => args,
+                _ => panic!("expected run arguments"),
+            }
+        }
+
+        let denied = cli_args(&["--probe", "probes/custom.bt", "/bin/true"]);
+        let error =
+            super::resolve_probe_file(&denied, None, Path::new("/tmp/docker-compose.bpftrace.yml"))
+                .expect_err("custom probe should fail closed");
+        assert!(error.contains("--allow-host-wide-probe"));
+        assert!(error.contains("host-wide events"));
+
+        let allowed = cli_args(&[
+            "--allow-host-wide-probe",
+            "--probe",
+            "probes/custom.bt",
+            "/bin/true",
+        ]);
+        assert!(allowed.allow_host_wide_probe);
+        assert_eq!(
+            super::resolve_probe_file(
+                &allowed,
+                None,
+                Path::new("/tmp/docker-compose.bpftrace.yml"),
+            )
+            .expect("acknowledged custom probe should resolve"),
+            "/workspace/probes/custom.bt"
+        );
+
+        let bundled = cli_args(&["--probe", "execve.bt", "/bin/true"]);
+        assert_eq!(
+            super::resolve_probe_file(
+                &bundled,
+                None,
+                Path::new("/tmp/docker-compose.bpftrace.yml"),
+            )
+            .expect("bundled scoped probe should resolve without acknowledgement"),
+            "/probes/execve.bt"
+        );
     }
 
     #[test]
@@ -2387,6 +2491,7 @@ mod tests {
     #[test]
     fn dashboard_tracker_args_force_jsonl_and_preserve_command() {
         let args = build_tracker_args_for_dashboard(&super::CliArgs {
+            allow_host_wide_probe: true,
             probe_file: Some("/probes/custom.bt".to_string()),
             config_path: Some(Path::new("ebpf-tracker.toml").to_path_buf()),
             log_enable: true,
@@ -2408,6 +2513,7 @@ mod tests {
             vec![
                 "--probe",
                 "/probes/custom.bt",
+                "--allow-host-wide-probe",
                 "--config",
                 "ebpf-tracker.toml",
                 "--log-enable",
@@ -2606,6 +2712,7 @@ mod tests {
 
         let run_plan = ResolvedRunPlan::resolve(
             &CliArgs {
+                allow_host_wide_probe: false,
                 probe_file: None,
                 config_path: None,
                 log_enable: false,

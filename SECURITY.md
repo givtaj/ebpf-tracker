@@ -1,36 +1,83 @@
 # Security Policy
 
-## Supported Versions
+## Project Maturity And Support
 
-This project supports the latest published release of `ebpf-tracker`.
+`ebpf-tracker` is experimental alpha software. It has no stable API, hardened
+multi-tenant deployment model, or production-support promise. Security fixes
+are made on the default branch and, when a release is published, on the newest
+release line at maintainer discretion. Older tags should be treated as
+unsupported unless a maintainer says otherwise in a security advisory.
 
-Security fixes are generally applied to the current release line first. Older
-versions may receive fixes at maintainer discretion.
+## Local Tracing Trust Boundary
 
-## Reporting a Vulnerability
+Run mode is powerful by design. The shipped Docker Compose runtimes currently:
 
-If GitHub private vulnerability reporting is enabled for this repository, use it
-to report security issues privately.
+- set `privileged: true`;
+- join the Docker host PID namespace with `pid: host`; and
+- bind-mount the selected project read-write at `/workspace`.
 
-Do not publish a public release until GitHub private vulnerability reporting is
-enabled or a real maintainer security contact has been documented.
+These settings give the container broad access to the Linux Docker host (or to
+the Linux VM used by Docker Desktop), expose host process metadata, and let the
+wrapped command change files in the mounted project. eBPF/perf collection is
+observation, not sandboxing: it does not make a command safer to execute.
 
-Do not open a public issue or discussion for a suspected vulnerability.
+Only trace code, dependencies, commands, and fixtures you trust. Never use the
+run-mode container for an untrusted pull request, arbitrary downloaded project,
+shared CI worker, multi-tenant host, or production machine. Prefer a disposable
+VM or droplet with no credentials, secrets, or sensitive neighboring workloads.
 
-## What to Include
+Built-in generated probes can apply workload filtering, but that is a data
+scope control rather than a privilege boundary. An arbitrary custom `--probe`
+program cannot be safely rewritten or externally constrained by the CLI and
+therefore fails closed unless the operator supplies
+`--allow-host-wide-probe`. The direct runtime wrapper requires the equivalent
+`EBPF_TRACKER_ALLOW_HOST_WIDE_PROBE=1` acknowledgement. Neither switch adds
+containment: treat the probe as potentially host-wide, review it yourself, and
+never accept one from an untrusted source.
 
-Please include:
+Runtime CPU, memory, CPU-set, and PID limits reduce resource consumption; they
+do not remove container privilege or host visibility.
 
-- a clear description of the issue
-- the affected version or commit
-- steps to reproduce the problem
-- any proof-of-concept code, logs, or screenshots that help explain the impact
+## Attach Trust Boundary
 
-## Disclosure Expectations
+The live `k8s` and `aws-eks` Inspektor Gadget paths execute local `kubectl`,
+`kubectl gadget`, and, for EKS, AWS CLI operations using the caller's existing
+credentials and kubeconfig. Review the selected cluster, context, namespace,
+and workload before running them. EKS attach may update kubeconfig.
 
-Please avoid public disclosure of an unpatched issue, including zero-day
-reports, until a maintainer has confirmed the report and published guidance or a
-fix.
+Other target/backend combinations are scaffold-only or rejected. A scaffold
+prints a plan and does not establish a security boundary or start tracing. See
+the [attach support matrix](./docs/cli.md#attach-mode-experimental).
 
-Once a report is received, we will acknowledge it as soon as practical, triage
-the impact, and coordinate a fix or mitigation before public release.
+## Trace Data And External Services
+
+Treat trace artifacts as potentially sensitive. Depending on enabled probes,
+JSONL, replay logs, datasets, terminal output, and exported spans can contain:
+
+- command and process names;
+- process IDs and file paths;
+- file descriptors and byte counts;
+- traced command metadata; and
+- activity from other processes visible to an insufficiently scoped probe.
+
+The project does not intentionally capture file contents in its normalized
+event schema, but paths and process metadata alone can reveal private
+information. Inspect and redact artifacts before sharing them. The dataset
+analyzer and OTLP exporter send derived trace data to the endpoint you
+configure; use only endpoints you trust and understand.
+
+## Reporting A Vulnerability
+
+Use GitHub private vulnerability reporting from the repository's **Security**
+tab when it is available. Include the affected version or commit, impact,
+reproduction steps, and a minimal proof of concept.
+
+Do not open a public issue or discussion containing exploit details, secrets,
+or sensitive trace output. If private vulnerability reporting is unavailable,
+open only a non-sensitive issue asking the maintainer to establish a private
+reporting channel.
+
+Maintainers should acknowledge reports as soon as practical, assess impact,
+coordinate a fix or mitigation, and publish an advisory before detailed public
+disclosure. Do not publish a release that claims a private reporting path until
+that path has been verified.

@@ -20,6 +20,13 @@ This file tracks user-requested work and delegated agent tasks in progress on th
 
 ## Completed
 
+### Open-Source Alpha Hardening
+
+- 2026-09-27 | Task: Turn the current experimental workbench into a trustworthy open-source alpha by isolating trace scope, documenting the privileged runtime boundary, repairing CI/release delivery, and validating one supported end-to-end workflow | Owner: Codex | Status: completed | Verification: strict v0.1.1 release gate passed twice; 121 tests passed; live bpftrace runtime, descendant isolation, all three customer journeys, and synthetic platform-archive checks passed | Output: runtime/probe changes, CI/release updates, focused public docs, verification evidence
+- 2026-09-27 | Task: Design and implement workload-scoped tracing for wrapped commands without losing child-process coverage | Agent: trace-isolation | Status: completed | Output: `scripts/`, `src/`, probe/runtime tests and docs notes
+- 2026-09-27 | Task: Repair CI and GitHub release readiness, including strict product-path verification and packaging audit | Agent: release-readiness | Status: completed | Output: `.github/workflows/`, release scripts/docs
+- 2026-09-27 | Task: Tighten the public product story, security boundary, compatibility promise, and known documentation drift | Agent: oss-docs | Status: completed | Output: `README.md`, `docs/`, `SECURITY.md`, crate docs
+
 ### First Release Readiness
 
 - 2026-04-03 | Task: Realign the first-release workflow around a solo-maintainer, product-first verification split | Owner: Codex | Status: completed | Output: `scripts/runtime-smoke.sh`, `scripts/release-check.sh`, `README.md`, `docs/cli.md`, `CONTRIBUTING.md`, `.github/pull_request_template.md`, `RELEASE.md`

@@ -1,212 +1,189 @@
 # CLI Guide
 
-This page holds the detailed usage notes for the root `ebpf-tracker` CLI. The
-main [`README.md`](../README.md) stays intentionally short and points here for
-the root-package behavior that does not belong to the extension crates.
+`ebpf-tracker` is an experimental alpha for trusted Rust and Node.js development
+workflows. The most mature behavior is local command-session tracing and
+replay. It is not a production agent, security sandbox, or full profiler.
 
-## Requirements
+## Requirements And Compatibility
 
-- Rust toolchain
-- Docker Desktop or another Docker engine that supports privileged containers
-- Node.js on the host only if you want the repo-local dashboard/viewer flow
-- `pkg-config` and OpenSSL development headers for Linux source builds (Ubuntu
-  and Debian package them as `pkg-config` and `libssl-dev`)
+For live run/demo tracing you need:
+
+- a Rust toolchain to build or install the CLI;
+- Docker Desktop or another Docker engine that permits privileged containers;
+- Linux kernel/eBPF features exposed to that Docker host or VM; and
+- `pkg-config` plus OpenSSL development headers for Linux source builds
+  (`pkg-config` and `libssl-dev` on Debian/Ubuntu).
+
+Node.js on the host is needed for clone-local viewer/frontend workflows. The
+traced workload itself runs in a bundled Debian Bookworm image:
+
+| Runtime selection | Image family | Auto-selected commands |
+| --- | --- | --- |
+| Rust | `rust:1-bookworm` | `cargo`, Rust-oriented defaults |
+| Node.js | `node:22-bookworm` | `node`, `npm`, `npx`, `pnpm`, `yarn` |
+
+Host-installed tools and native libraries are not automatically available in
+the container. Use `--runtime rust` or `--runtime node` when a shell wrapper
+prevents reliable auto-detection.
+
+## Security Boundary
+
+Live run/demo mode starts a container with `privileged: true`, `pid: host`, and
+a read-write bind mount of the selected project at `/workspace`. The wrapped
+command can change that project, and the tracer has broad visibility into the
+Docker host or Docker Desktop VM.
+
+Never trace an untrusted repository, dependency, command, fixture, or probe.
+Use a disposable development VM/droplet with no sensitive neighboring
+workloads. Workload filtering reduces collected events; it does not reduce the
+container privilege. Read [SECURITY.md](../SECURITY.md) before live use.
+
+The `monitor` subcommand is different: it performs bounded read-only host checks
+and does not start the privileged tracing runtime.
 
 ## Install
 
-Install from a local clone:
+Install from a reviewed local checkout:
 
 ```bash
 cargo install --path . --locked
 ```
 
-Install from GitHub:
+Or install the current Git revision directly:
 
 ```bash
 cargo install --git https://github.com/givtaj/ebpf-tracker --locked
 ```
 
-The first public release is GitHub-release-first. Use `cargo install --git ...`
-or a tagged source checkout; the workspace crates are not published to
-crates.io yet.
+The root package and workspace crates use `publish = false`; they are not
+available from crates.io. Pin a Git tag or commit when repeatability matters.
+Runtime assets are materialized under `~/.cache/ebpf-tracker` by default. Set
+`EBPF_TRACKER_CACHE_DIR=/your/path` to use a different cache root.
 
-After install, the smallest useful checks are:
+## Golden Workflow
+
+From a clone, use the bundled demo first:
 
 ```bash
-ebpf-tracker --help
-ebpf-tracker /bin/true
-ebpf-tracker monitor --once --no-clear
-ebpf-tracker cargo run
-ebpf-tracker npm run dev
+cargo demo --emit jsonl session-io-demo > /tmp/ebpf-tracker-demo.jsonl
 ```
 
-`ebpf-tracker /bin/true` is the smallest real tracer smoke test and still
-requires Docker support. The `cargo demo`, `cargo see`, `cargo dataset`,
-`cargo otel`, `cargo jaeger`, `cargo viewer`, and `cargo monitor` helpers
-remain Cargo aliases for people working from a clone of this repository.
+The first run may build/pull the Docker image. Cargo and application output
+remain on `stderr`; valid `StreamRecord` JSON lines go to the file. Expect a
+session record and a mixture of Cargo/toolchain and app events, including
+records shaped like:
 
-Runtime assets are materialized under `~/.cache/ebpf-tracker` by default. Set
-`EBPF_TRACKER_CACHE_DIR=/your/path` to override that location.
+```json
+{"type":"syscall","timestamp_unix_ms":1774500000200,"kind":"open_at","comm":"session-io-demo","pid":1012,"file":"input/message.txt"}
+```
+
+Timestamps, PIDs, order, and volume vary. The demo's important app-level signal
+is file access to `input/message.txt`, a loopback `connect`, and output writes.
+
+The smallest installed-binary runtime check is:
+
+```bash
+ebpf-tracker /bin/true
+```
+
+It proves orchestration, not rich application signal.
 
 ## Run Mode
-
-Run without installing:
-
-```bash
-cargo run --bin ebpf-tracker -- cargo run
-```
 
 Common commands:
 
 ```bash
 ebpf-tracker cargo run
 ebpf-tracker cargo test
-ebpf-tracker cargo check
 ebpf-tracker npm run dev
 ebpf-tracker npm test
-ebpf-tracker --log-enable cargo run
 ebpf-tracker --emit jsonl cargo run
-ebpf-tracker --transport perf cargo run
+ebpf-tracker --transport perf --emit jsonl cargo run
 ebpf-tracker --runtime node /bin/sh -lc "npm run dev"
 ```
 
-The tracer follows the full wrapped command session. In practice that means
-Rust sessions often include `cargo`, `rustc`, linkers, and then the final app.
-Node sessions often include `npm`, `node`, package scripts, and subprocesses.
-
-## Terminal Monitor
-
-For SSH-first droplet work, use the terminal monitor instead of the browser
-viewer:
+Without installing from a checkout:
 
 ```bash
-ebpf-tracker monitor
+cargo run --bin ebpf-tracker -- cargo run
 ```
 
-Bounded checks for scripts or quick host snapshots:
+The tracer follows the complete wrapped process tree. Rust sessions therefore
+include `cargo`, `rustc`, linkers, and the app; Node sessions can include `npm`,
+`node`, package scripts, and their children. This is expected session signal,
+not app-only profiling. The wrapper preserves the underlying command's exit
+status.
+
+### Workload Scoping
+
+The default `/probes/execve.bt` and probes generated from
+`ebpf-tracker.toml` are workload-scoped. They seed a bpftrace map from `cpid`,
+track descendant thread IDs with `sched_process_fork`, and clean entries on
+process exit. Their syscall handlers emit events only for IDs in that map.
+
+This filtering is intended to keep unrelated Docker-host processes out of the
+stream. It is not a security boundary, and it does not change `privileged` or
+`pid: host`. `bpftrace -c` provides the initial command PID; it does not by
+itself filter every probe.
+
+`perf trace` command mode follows the wrapped command and its children. It is
+best-effort: `openat` paths may be absent when perf cannot decode userspace
+string pointers.
+
+### Custom Bpftrace Probes
+
+An arbitrary custom probe cannot be safely rewritten or externally scoped by
+the CLI. Any explicit probe other than the shipped scoped default fails closed
+unless you make the host-wide risk acknowledgement:
 
 ```bash
-ebpf-tracker monitor --once --no-clear
-ebpf-tracker monitor --interval-ms 1000 --samples 5
-cargo monitor --once --no-clear
+ebpf-tracker --allow-host-wide-probe --probe ./probes/custom.bt cargo run
 ```
 
-The monitor is read-only. It renders Linux `/proc` CPU, memory, swap, load,
-process, and top-process pressure, uses the standard `df` command for disk
-space, then adds Docker and eBPF health panels when those commands are
-available. It does not install packages, start a daemon, or open a browser.
-External command reads have short deadlines; on hardened droplets, unavailable
-Docker or `bpftool` metadata is reported instead of waiting for interactive
-sudo. See [Host Monitoring](./host-monitoring.md) for the SSH-first workflow.
+`--allow-host-wide-probe` means the program may observe unrelated processes in
+the Docker host PID namespace. Review the probe yourself and use an isolated
+host. The equivalent acknowledgement for direct use of the runtime wrapper is
+`EBPF_TRACKER_ALLOW_HOST_WIDE_PROBE=1`; normal CLI users should use the flag.
 
-## Runtime Selection
-
-Runtime selection is modular:
-
-- Rust commands use the Rust runtime image
-- Node commands such as `node`, `npm`, `npx`, `pnpm`, and `yarn` use the Node runtime image
-- `--runtime rust` or `--runtime node` overrides auto-detection when the wrapped command goes through a shell
-- Node support uses a dedicated Node image, not `nvm` inside the tracing container
+`--probe` is supported only with `--transport bpftrace` and takes precedence
+over a config-generated probe.
 
 ## Event Stream
 
-The CLI can reserve `stdout` for a machine-readable event stream:
+The default output mode is `raw`, and the default transport is `bpftrace`.
+Reserve `stdout` for machine-readable records with:
 
 ```bash
 ebpf-tracker --emit jsonl cargo run
 ```
 
-In `jsonl` mode:
-
-- `stdout` emits newline-delimited JSON records
-- `stderr` keeps normal build output, app output, and runtime errors readable
-- without `--emit`, the default mode is `raw`
-- without `--transport`, the default transport is `bpftrace`
-
-That makes it easy to pipe the trace into downstream tools such as:
+In JSONL mode, build output, application output, warnings, and runtime errors
+remain on `stderr`. Downstream examples from a source checkout:
 
 ```bash
 ebpf-tracker --emit jsonl cargo run | cargo dataset --test-name cargo-run-smoke
-ebpf-tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name session-io-demo
+ebpf-tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name my-service
 ```
 
-The shared JSONL record schema lives in
-[`crates/ebpf-tracker-events`](../crates/ebpf-tracker-events/README.md).
+The event-name layers differ:
 
-## Dashboard, Demo, And See
+| Layer | Open syscall spelling |
+| --- | --- |
+| Raw bpftrace/perf-normalizer line | `openat` |
+| `StreamRecord` JSON `kind` | `open_at` |
+| Aggregate metric | `openat` |
 
-Dashboard commands for tracing your own project:
-
-```bash
-ebpf-tracker --dashboard cargo run
-ebpf-tracker --dashboard npm run dev
-ebpf-tracker --dashboard node
-```
-
-`demo` and `see` prefer the repo's `examples/*/ebpf-demo.toml` manifests when a
-checkout is available. Without a checkout, the CLI materializes bundled demo
-assets into its cache and runs from there.
-
-Demo and replay entry points:
-
-```bash
-ebpf-tracker demo --dashboard session-io-demo
-ebpf-tracker see
-```
-
-`see` is a shortcut for the dashboard demo experience. You can also target a
-specific example:
-
-```bash
-ebpf-tracker see postcard-generator-rust
-cargo see postcard-generator-rust
-```
-
-Dashboard mode forces `--emit jsonl` for the viewer stream and also enables
-`--log-enable` so replay logs are preserved for later review.
-
-Log locations:
-
-- regular `run` sessions write under the current project's `./logs`
-- `demo` and `see` sessions write under `examples/<demo-name>/logs/`
-
-If you are working from a clone, the `cargo demo`, `cargo see`, and
-`cargo viewer` aliases are the quickest way to reach the repo-local demos and
-viewer. Installed binaries can run `ebpf-tracker demo ...` and
-`ebpf-tracker see ...` directly because demo assets are bundled and
-materialized on demand.
-
-Replay example:
-
-```bash
-cargo viewer --replay examples/session-io-demo/logs/ebpf-tracker-YYYYMMDD-HHMMSS.log
-```
-
-Fastest deterministic viewer preview for frontend work:
-
-```bash
-bash scripts/dashboard-smoke.sh
-bash scripts/dashboard-smoke.sh --no-open
-```
-
-That uses a bundled replay fixture instead of starting a fresh trace.
-
-The interactive Node REPL path keeps a real terminal attached while the viewer
-stays live, so `./target/debug/ebpf-tracker --dashboard node` works for
-side-by-side typing plus dashboard review. Pure in-memory expressions will not
-produce much trace data, so use file, network, or subprocess commands in the
-REPL if you want richer viewer output.
+Other JSON kinds are `execve`, `write`, and `connect`. The authoritative schema
+is in [`ebpf-tracker-events`](../crates/ebpf-tracker-events/README.md).
 
 ## Config
 
-If `ebpf-tracker.toml` exists in the current project, it is picked up
-automatically. You can also pass it explicitly:
+The CLI automatically reads `ebpf-tracker.toml` from the selected project, or
+accepts an explicit path:
 
 ```bash
 ebpf-tracker --config ebpf-tracker.toml cargo run
 ```
-
-`--probe` takes precedence over config-generated probes.
 
 Example:
 
@@ -214,7 +191,7 @@ Example:
 [probe]
 exec = true
 write = true
-open = false
+open = true
 connect = false
 
 [runtime]
@@ -224,123 +201,151 @@ cpuset = "0-3"
 pids_limit = 512
 ```
 
-Available flags:
+Probe fields:
 
-- `probe.exec`: trace `execve`
-- `probe.write`: trace `write`
-- `probe.open`: trace `openat`
-- `probe.connect`: trace `connect`
-- `runtime.cpus`: Docker CPU quota for the runtime container
-- `runtime.memory`: Docker memory limit like `512m` or `4g`
-- `runtime.cpuset`: Docker CPU set string like `0-3` or `0,1`
-- `runtime.pids_limit`: Docker PID limit, or `-1` for unlimited
+- `probe.exec`: raw `execve`, JSON `execve`
+- `probe.write`: raw/JSON `write`
+- `probe.open`: raw `openat`, JSON `open_at`
+- `probe.connect`: raw/JSON `connect`
 
-See [`ebpf-tracker.toml.example`](../ebpf-tracker.toml.example).
+Runtime limits constrain resource use but do not remove privilege or host PID
+visibility. See [`ebpf-tracker.toml.example`](../ebpf-tracker.toml.example).
+
+## Dashboard, Demo, And Replay
+
+Trace a trusted project and open the loopback-bound dashboard:
+
+```bash
+ebpf-tracker --dashboard cargo run
+ebpf-tracker --dashboard npm run dev
+```
+
+Product-first demo entry points:
+
+```bash
+ebpf-tracker demo --dashboard session-io-demo
+ebpf-tracker see
+```
+
+`see` is a dashboard-demo shortcut. Dashboard mode forces JSONL and enables
+logging so the session can be replayed. Regular run logs are written under the
+project's `./logs`; demo/see logs are written under
+`examples/<demo-name>/logs/` when using a checkout. Embedded demo assets are
+materialized into the cache when a checkout is unavailable.
+
+Clone-local deterministic replay:
+
+```bash
+cargo viewer --replay examples/session-io-demo/logs/ebpf-tracker-YYYYMMDD-HHMMSS.log
+bash scripts/dashboard-smoke.sh --no-open
+```
+
+Replay does not require a new privileged trace. The viewer binds to
+`127.0.0.1` by default. If you deliberately bind it to another interface, treat
+it as an unauthenticated development server and control network exposure.
+
+The interactive Node REPL path keeps a terminal attached while the viewer is
+live. Pure in-memory expressions produce little syscall signal; use file,
+network, or subprocess activity for a meaningful trace.
+
+## Terminal Monitor
+
+For an SSH-first host snapshot:
+
+```bash
+ebpf-tracker monitor
+ebpf-tracker monitor --once --no-clear
+ebpf-tracker monitor --interval-ms 1000 --samples 5
+```
+
+The monitor reads Linux `/proc`, uses `df` for disk space, and adds Docker and
+eBPF health when the relevant commands are available. It does not install
+packages, start a daemon, open a browser, or enter the tracing container.
+Unavailable Docker or `bpftool` metadata is reported without interactive sudo.
+See [Host Monitoring](./host-monitoring.md).
 
 ## Attach Mode (Experimental)
 
-`attach` now runs live backend commands for `inspektor-gadget` on `k8s` and
-`aws-eks` targets. The first-wave default probes a broader set of gadget trace
-subcommands (`exec`, `open`, `write`, and `tcpconnect`) when they are available
-in the local plugin, then normalizes supported events into the shared stream
-schema before printing.
+Attach support is not one uniform feature:
 
-Operational notes:
+| Target and backend | Behavior today |
+| --- | --- |
+| `k8s` + `inspektor-gadget` | **Live:** runs local `kubectl gadget` commands |
+| `aws-eks` + `inspektor-gadget` | **Live:** updates/accesses kubeconfig, then runs `kubectl gadget`; EC2-backed nodes only |
+| `k8s`/`aws-eks` + `tetragon` | **Scaffold:** prints a plan; no tracing starts |
+| `docker`/`aws-ecs` + `inspektor-gadget` | **Scaffold:** prints a plan; no tracing starts |
+| `docker`/`aws-ecs` + `tetragon` | Rejected as unsupported |
 
-- if a trace subcommand is unavailable in your local `kubectl gadget` plugin, it is skipped
-- if all candidate trace subcommands are unavailable, attach exits with an explicit setup error
-- set `EBPF_TRACKER_ATTACH_INSPEKTOR_GADGET_TRACE_SET=exec,open,write,connect` to override the candidate set order
-
-Other `attach` paths are still scaffold-mode only:
-
-- `docker` targets
-- `aws-ecs` targets
-- all `tetragon` targets
-
-Current attach examples:
+Representative commands:
 
 ```bash
 ebpf-tracker attach k8s --selector app=payments
 ebpf-tracker attach aws-eks --cluster prod --region us-east-1 --selector app=payments
-ebpf-tracker attach aws-ecs --cluster prod --service api
 ebpf-tracker attach docker --container payments-api
+ebpf-tracker attach aws-ecs --cluster prod --service api
 ```
 
-Current first-wave scope:
+The live Kubernetes path requires a working `kubectl` client and
+`kubectl gadget` plugin plus authorization for the selected workload. The EKS
+path also uses the local AWS CLI and credentials to update kubeconfig for the
+named cluster. Review the active account, cluster, namespace, selector/pod, and
+region first.
 
-- `inspektor-gadget` is the first backend for `k8s` and `aws-eks`
-- `tetragon` is the next backend for long-running cluster attach on `k8s` and `aws-eks`
-- AWS-first scope stays on EKS clusters backed by EC2 nodes
-- `aws-ecs` remains planned work after the EKS path is stable
-- `aws-eks` Fargate and `aws-ecs` Fargate stay out of first-wave scope because the attach model depends on host-level eBPF access
-
-## Local Checks
-
-Smoke check:
+The Inspektor Gadget adapter tries the available `exec`, `open`, `write`, and
+`tcpconnect` trace subcommands. Missing subcommands are skipped; if none are
+available, attach fails with a setup error. Override their order/set with:
 
 ```bash
-cargo run --bin ebpf-tracker -- /bin/true
+EBPF_TRACKER_ATTACH_INSPEKTOR_GADGET_TRACE_SET=exec,open,write,connect \
+  ebpf-tracker attach k8s --selector app=payments
 ```
 
-Installed-binary check from a Rust project:
+A scaffold prints `attach scaffold`, explicitly states that no live backend
+execution occurred, and may exit zero after producing the plan. That zero means
+"plan rendered," not "workload traced." EKS Fargate and ECS Fargate are out of
+scope because the planned model depends on host-level eBPF access.
+
+## Local And Release Checks
+
+Non-privileged checks:
 
 ```bash
-ebpf-tracker cargo run
+cargo run --bin ebpf-tracker -- --help
+cargo demo --list
+cargo test --all --locked
 ```
 
-Config-driven check:
+Privileged live smoke on an isolated compatible host:
 
 ```bash
-cp ebpf-tracker.toml.example ebpf-tracker.toml
-ebpf-tracker cargo run
+bash scripts/runtime-smoke.sh
 ```
 
-Demo availability check:
-
-```bash
-ebpf-tracker demo --list
-```
-
-Customer UX end-to-end suite (maintainer-facing):
+Customer-journey suite:
 
 ```bash
 bash scripts/customer-ux-check.sh
 bash scripts/customer-ux-check.sh --strict-prereqs
 bash scripts/customer-ux-check.sh --fail-on-skip
-```
-
-Release verification wrapper with customer UX coverage:
-
-```bash
 bash scripts/release-check.sh --with-customer-ux
 ```
 
-By default the customer UX suite may return `SKIP` when Docker or loopback
-support is missing. Use `--strict-prereqs` on the individual scripts when you
-want those host capability gaps to fail, or `--fail-on-skip` on the umbrella
-runner when you want any skipped journey to fail the suite.
-
-For dataset and intelligence verification on hosts where the local mock server
-is inconvenient, `scripts/customer-data-e2e.sh` accepts an external
-OpenAI-compatible endpoint:
-
-```bash
-bash scripts/customer-data-e2e.sh --analyze-endpoint https://your-endpoint.example/v1
-```
-
-Expected today:
-
-- the first run may build the Docker image
-- the default probe output shows `execve ...`
-- config-driven `write/open/connect` output can still be noisy because tracing is per full session, not target-only
+By default, missing Docker or loopback capabilities can produce `SKIP`. Use the
+strict controls when a skipped live journey must fail the gate. A non-skipped
+runtime smoke is required before claiming that live tracing works on the tested
+host. `scripts/attach-smoke.sh` validates scaffold/rejection behavior; it is not
+proof of live Kubernetes/EKS attachment.
 
 ## Related Pages
 
-- [`README.md`](../README.md)
-- [`docs/customer-ux-e2e.md`](../docs/customer-ux-e2e.md)
-- [`examples/README.md`](../examples/README.md)
-- [`crates/ebpf-tracker-events/README.md`](../crates/ebpf-tracker-events/README.md)
-- [`crates/ebpf-tracker-dataset/README.md`](../crates/ebpf-tracker-dataset/README.md)
-- [`crates/ebpf-tracker-otel/README.md`](../crates/ebpf-tracker-otel/README.md)
-- [`crates/ebpf-tracker-perf/README.md`](../crates/ebpf-tracker-perf/README.md)
-- [`crates/ebpf-tracker-viewer/README.md`](../crates/ebpf-tracker-viewer/README.md)
+- [Project status and golden workflow](../README.md)
+- [Security policy](../SECURITY.md)
+- [Architecture and trust boundaries](../architecture.md)
+- [Customer UX E2E contract](./customer-ux-e2e.md)
+- [External `payment-engine` example](./trace-payment-engine.md)
+- [Examples](../examples/README.md)
+- [Event schema](../crates/ebpf-tracker-events/README.md)
+- [Dataset crate](../crates/ebpf-tracker-dataset/README.md)
+- [OTel crate](../crates/ebpf-tracker-otel/README.md)
+- [Perf crate](../crates/ebpf-tracker-perf/README.md)
+- [Viewer crate](../crates/ebpf-tracker-viewer/README.md)

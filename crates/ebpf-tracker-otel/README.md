@@ -1,71 +1,57 @@
-# ebpf-tracker-otel
+# `ebpf-tracker-otel`
 
-`ebpf-tracker-otel` turns `ebpf-tracker` JSONL streams into OTLP traces and can
-launch a local Jaeger stack for inspection.
+> Experimental workspace crate. It is `publish = false`; use it from a reviewed
+> source checkout and expect the CLI/export mapping to evolve.
 
-This crate is exposed in a local clone through the repo Cargo aliases
-`cargo otel` and `cargo jaeger`.
+`ebpf-tracker-otel` converts normalized `ebpf-tracker` JSONL into OTLP/HTTP
+protobuf traces. It also provides a clone-local helper for a Dockerized Jaeger
+stack.
 
-## CLI Surface
+## Export
 
-Export mode reads newline-delimited `StreamRecord` values from `stdin`:
+The clone-local `cargo otel` alias reads newline-delimited `StreamRecord` JSON
+from `stdin`:
 
 ```bash
 cargo otel [--target otlp|jaeger] [--endpoint URL] [--service-name NAME] [--timeout-seconds N] [--header NAME=VALUE]
 ```
 
-Jaeger helper mode manages the local collector stack:
-
-```bash
-cargo jaeger <up|down|status>
-```
-
-## Export Behavior
-
-- Empty input succeeds without contacting a collector.
-- The input stream is grouped into one session span plus one span per process.
-- Session spans carry aggregate events, and process spans carry syscall events.
-- `--service-name` is trimmed and must not be empty.
-- `--timeout-seconds` must be greater than zero.
-- `--header` accepts `NAME=VALUE`, trims both sides, and may be repeated.
-- `--endpoint` must be a valid `http` or `https` URL with a host.
-- If `--endpoint` omits a concrete traces path, the code normalizes it to `/v1/traces`.
-- `--target` accepts `otlp` or `jaeger` and changes the exported resource target label.
-- Partial collector warnings are surfaced on `stderr`.
-- Partial collector rejections fail the export.
-
 Example:
 
 ```bash
-ebpf-tracker --emit jsonl cargo run | cargo otel --target jaeger --service-name session-io-demo
+ebpf-tracker --emit jsonl cargo run \
+  | cargo otel --target jaeger --service-name session-io-demo
 ```
 
-Hardened OTLP example:
+Explicit collector example:
 
 ```bash
-ebpf-tracker --emit jsonl cargo run | cargo otel --target otlp --endpoint http://127.0.0.1:4318 --timeout-seconds 15 --header authorization=Bearer-token
+ebpf-tracker --emit jsonl cargo run \
+  | cargo otel --target otlp \
+      --endpoint http://127.0.0.1:4318 \
+      --timeout-seconds 15
 ```
 
-On success, the command prints a summary to `stderr` that includes the target,
-endpoint, service name, record counts, span counts, and warning count.
+Behavior:
+
+- empty input succeeds without contacting a collector;
+- one session span and one span per process are generated;
+- aggregate records become session-span events and syscalls become
+  process-span events;
+- `--service-name` must be non-empty after trimming;
+- `--timeout-seconds` must be greater than zero;
+- repeatable `--header NAME=VALUE` values are trimmed on both sides;
+- endpoints must use `http` or `https` and include a host;
+- an endpoint without a concrete traces path is normalized to `/v1/traces`;
+- partial collector warnings are printed to `stderr`; and
+- partial collector rejection fails the export.
+
+On success, the command reports its target, endpoint, service name, input/span
+counts, and warning count on `stderr`.
 
 ## Jaeger Helper
 
-`cargo jaeger up` materializes the bundled `docker-compose.jaeger.yml` into the
-cache directory for this crate version, then runs `docker compose` against that
-file. The same cache-root rules as the exporter apply: `EBPF_TRACKER_CACHE_DIR`
-takes priority, then `XDG_CACHE_HOME`, then `HOME`, then the system temp dir.
-
-The helper maps to:
-
-- `up` -> `docker compose ... up -d`
-- `status` -> `docker compose ... ps`
-- `down` -> `docker compose ... down`
-
-When `up` or `status` succeeds, the CLI prints the Jaeger UI URL
-(`http://127.0.0.1:16686`) on `stderr`.
-
-Example:
+Manage the bundled local stack with:
 
 ```bash
 cargo jaeger up
@@ -73,9 +59,34 @@ cargo jaeger status
 cargo jaeger down
 ```
 
-## Notes
+The helper materializes `docker-compose.jaeger.yml` into the crate-version
+cache, then invokes Docker Compose. Cache resolution is
+`EBPF_TRACKER_CACHE_DIR`, `XDG_CACHE_HOME`, `HOME`, then the system temp
+directory. Successful `up`/`status` commands print the Jaeger UI URL
+`http://127.0.0.1:16686`.
 
-- The embedded Jaeger compose file exposes ports `16686`, `4317`, and `4318`.
-- The exporter uses OTLP/HTTP protobuf requests.
-- The raw JSONL stream remains the source of truth; this crate builds a trace
-  view on top of it.
+The current Compose file publishes host ports `16686`, `4317`, `4318`, `5778`,
+and `9411`. Docker's default port publishing may expose them beyond loopback.
+Use the helper only on a trusted development host with appropriate firewall
+rules; it is not a hardened or authenticated shared service.
+
+## Data And Credential Boundary
+
+Export transmits process names, PIDs, file paths, event metadata, and derived
+session structure to the configured collector. The raw JSONL stream remains the
+local source of truth, but the collector receives a transformed copy. Review
+trace sensitivity and collector retention/access controls before exporting.
+
+Headers supplied on the command line may be visible in shell history or process
+inspection. Do not commit credentials, copy them into examples, or use the
+bundled Jaeger stack for sensitive production data.
+
+## Limits
+
+- Only the normalized shared `StreamRecord` schema is accepted.
+- OTLP spans are a view of syscall-session events, not full distributed tracing
+  instrumentation.
+- Export does not make an unscoped trace safe; collection scope is determined
+  upstream.
+- The Jaeger helper depends on Docker and is intended for disposable local
+  inspection.

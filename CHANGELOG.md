@@ -4,23 +4,37 @@ This file tracks notable repo changes in progress on this branch.
 
 ## Unreleased
 
+_No unreleased changes._
+
+## v0.1.1 - 2026-09-27
+
+### Security
+
+- Scoped the built-in and generated bpftrace probes to the wrapped process tree, including descendants, while excluding unrelated host activity.
+- Made arbitrary custom probes fail closed unless the operator explicitly accepts host-wide tracing with `--allow-host-wide-probe`.
+- Documented that the privileged, host-PID, read-write-mounted runtime is only for trusted workloads and that workload filtering is not a security boundary.
+
 ### Added
 
 - Added a terminal-first `ebpf-tracker monitor` droplet overview with `/proc`, bounded Docker/eBPF health reads, sanitized host-derived text, and host-readiness docs for clean Linux development boxes.
+- Added a live runtime-isolation smoke test covering parent and descendant capture plus concurrent host-noise exclusion.
+- Added deterministic Linux and Intel macOS release archives, verified archive contents, executable-bit checks, and `SHA256SUMS`.
 
 ### Fixed
 
-- Switched the tag-driven release workflow to GitHub's current `macos-15-intel` hosted runner label so macOS release builds do not cancel before execution.
+- Fixed the customer viewer E2E diagnostic so strict public CI no longer fails because `printf` parses the divider as an option.
+- Switched the tag-driven release workflow to the current `macos-15-intel` hosted runner label.
+- Fixed repo-local `cargo demo` and `cargo see` aliases to use the current `ebpf-tracker` binary name.
 
 ### Changed
 
+- Positioned the project as an experimental alpha for trusted Rust and Node.js workloads rather than a general production observability tool.
+- Added a supported-surface matrix and a golden `session-io-demo` workflow, and aligned docs on `openat` probe names versus the `open_at` JSON event kind.
+- Made CI and tagged releases fail on missing scripts, skipped customer journeys, runtime isolation regressions, or incomplete platform artifacts instead of publishing a partial fallback release.
 - Refreshed the root onboarding copy, CLI help, and example docs so installed-binary tracing is separated cleanly from checkout-only `demo` and `see` flows.
-- Reworked the live trace viewer layout and replay controls, including clearer status grouping, replay-library placement, reduced-motion handling, and tracker-binary resolution that can use either `ebpf-tracker` on `PATH` or a repo build.
-- Added a black-box release smoke path for viewer replay, dataset ingest/analyze, and traced demo commands, plus CI and release workflow integration for the non-Docker checks.
-- Added a customer UX E2E suite and umbrella runner that cover first-run CLI, trace-your-app, demo/viewer, and dataset/intelligence journeys from the customer point of view.
-- Hardened the customer UX E2E scripts with explicit `SKIP` semantics, `--strict-prereqs` enforcement mode, and external analyze-endpoint support for constrained environments.
-- Made CI and release workflow UX checks capability-aware so they prefer the full customer UX suite when prerequisites are available and otherwise fall back to smoke checks.
-- Fixed the repo-local `cargo demo` and `cargo see` aliases so they point at the current `ebpf-tracker` binary name again.
+- Reworked the live trace viewer layout and replay controls, including clearer status grouping, replay-library placement, reduced-motion handling, and tracker-binary resolution from either `PATH` or a repo build.
+- Added black-box verification for viewer replay, dataset ingest/analyze, traced demos, first-run CLI, and trace-your-app customer journeys.
+- Hardened customer UX checks with explicit `SKIP` semantics, strict-prerequisite enforcement, and external analyze-endpoint support for constrained environments.
 
 ## v0.1.0 - 2026-04-04
 

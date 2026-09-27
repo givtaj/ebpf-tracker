@@ -15,6 +15,10 @@ pub(crate) fn build_tracker_args_for_dashboard(cli_args: &CliArgs) -> Vec<String
         args.push(probe_file.clone());
     }
 
+    if cli_args.allow_host_wide_probe {
+        args.push("--allow-host-wide-probe".to_string());
+    }
+
     if let Some(config_path) = &cli_args.config_path {
         args.push("--config".to_string());
         args.push(config_path.display().to_string());

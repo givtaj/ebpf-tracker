@@ -1,103 +1,108 @@
-# ebpf-tracker-dataset
+# `ebpf-tracker-dataset`
 
-`ebpf-tracker-dataset` ingests `ebpf-tracker` JSONL streams or replay logs,
-writes a per-run dataset bundle, and analyzes an existing bundle with LM Studio
-or any OpenAI-compatible chat API.
+> Experimental workspace crate. It is `publish = false`, and its bundle/API
+> format may change before a stable release.
 
-The root `ebpf-tracker` CLI can also run this crate in supervised background
-mode via `--intelligence-dataset`.
+`ebpf-tracker-dataset` ingests normalized `ebpf-tracker` JSONL or replay logs,
+writes one local dataset bundle per run, and can optionally send a bounded
+summary to LM Studio or another OpenAI-compatible chat endpoint.
 
-## Commands
+The root CLI can supervise this crate through `--intelligence-dataset`.
 
-Ingest mode is the default when no subcommand is provided.
+## Ingest
+
+Ingest mode is the default:
 
 ```bash
 cargo dataset [--output <dir>] [--replay <path>] [--run-id <id>] [--source <live|replay>] [--command <text>] [--test-name <name>] [--git-sha <sha>] [--transport <bpftrace|perf>] [--runtime <auto|rust|node>] [--exit-code <n>] [--exit-signal <name>] [--log-path <path>]
 ```
 
-It reads newline-delimited `ebpf-tracker` JSONL from `stdin` unless
-`--replay <path>` is provided. `--source` defaults to `replay` when `--replay`
-is set and otherwise to `live`. `--log-path` defaults to the replay path when
-`--replay` is used.
-
-The ingester writes under `./datasets/<run-id>/` by default and prints a status
-line to `stderr` in the form:
+Without `--replay`, newline-delimited `StreamRecord` JSON is read from `stdin`.
+`--source` defaults to `replay` with `--replay` and `live` otherwise. A
+successful ingest prints this status shape to `stderr`:
 
 ```text
 dataset written run_id=... source=... dir=... records=... ignored_lines=...
 ```
 
-Supported ingest flags are:
+Example:
 
-- `--output <dir>`: output root, default `datasets`
-- `--replay <path>`: read records from a replay file instead of `stdin`
-- `--run-id <id>`: override the generated run directory name
-- `--source <live|replay>`: explicitly set the dataset source
-- `--command <text>`: record the traced command in `run.json`
-- `--test-name <name>`: record the test name in `run.json`
-- `--git-sha <sha>`: record the git SHA in `run.json`
-- `--transport <bpftrace|perf>`: record the transport name in `run.json`
-- `--runtime <auto|rust|node>`: record the runtime selection in `run.json`
-- `--exit-code <n>`: record the exit code in `run.json`
-- `--exit-signal <name>`: record the exit signal in `run.json`
-- `--log-path <path>`: record the replay or log path in `run.json`
+```bash
+ebpf-tracker --emit jsonl cargo run | cargo dataset --test-name cargo-run-smoke
+cargo dataset --replay crates/ebpf-tracker-viewer/demo-library/session-io-demo.jsonl
+```
 
-Analyze mode is invoked with the `analyze` subcommand.
+Input must use the shared JSON contract. In particular, an open syscall has
+`"kind":"open_at"`; `openat` is the raw/aggregate spelling. Non-empty lines
+that do not deserialize as a `StreamRecord` are ignored and counted in
+`ignored_lines`.
+
+## Bundle Layout
+
+Each run is written under `./datasets/<run-id>/` by default:
+
+- `run.json`: metadata, input pointers, counts, and session metadata
+- `events.jsonl`: normalized `StreamRecord` values
+- `processes.json`: per-process session rollups
+- `aggregates.json`: aggregate metrics
+- `features.json`: focus process, total bytes written, noise ratio, unique
+  processes/files, kind counts, top processes/files, and top writes
+
+`features.json` uses `open_at` in its event-kind counts because it follows the
+JSON enum spelling.
+
+## Analyze
+
+Analyze an existing bundle with:
 
 ```bash
 cargo dataset analyze --run <dataset-dir> [--provider <lm-studio|openai-compatible>] [--endpoint <url>] [--model <name>] [--api-key <token>] [--temperature <n>] [--max-tokens <n>] [--instructions-file <path>] [--live-logs]
 ```
 
-`lm-studio` is the default provider. It resolves to
-`http://127.0.0.1:1234` by default and uses `qwen/qwen3.5-9b` unless a model is
-passed explicitly. The parser also accepts `openai` as an alias for
-`openai-compatible`, but the documented provider name is `openai-compatible`.
-That provider requires both `--endpoint` and `--model`.
+`lm-studio` is the default provider. It defaults to
+`http://127.0.0.1:1234` and model `qwen/qwen3.5-9b`. The parser accepts
+`openai` as an alias, but the documented provider name is
+`openai-compatible`; that provider requires both `--endpoint` and `--model`.
 
-The analyzer writes to `./datasets/<run-id>/analysis/` and prints a status line
-to `stderr` in the form:
+Analysis output is written under `analysis/` in the run directory. Successful
+analysis prints this status shape to `stderr`:
 
 ```text
 analysis written provider=... model=... markdown=... json=...
 ```
 
-The output files are named from the provider and a sanitized model string, for
-example `analysis/lm-studio--qwen-qwen3.5-9b.md` and
-`analysis/lm-studio--qwen-qwen3.5-9b.json`.
+Output filenames combine a provider and sanitized model name, for example:
 
-`--live-logs` writes analyzer progress to `stderr` and persists the same lines
-under `analysis/<provider>--<model>.live.log`. When the provider is
-`lm-studio`, it also tails the newest LM Studio server log if one exists under
-`$LM_STUDIO_LOG_ROOT` or `~/.lmstudio/server-logs`. If no log file is found, or
-the file cannot be opened or read, the analyzer skips log tailing and records
-that fact in the live log stream.
-
-## Dataset Bundle
-
-Each ingest run writes these files under `./datasets/<run-id>/`:
-
-- `run.json`: dataset metadata, input pointers, record counts, and session metadata
-- `events.jsonl`: normalized typed `StreamRecord` values
-- `processes.json`: per-process rollup from the session trace
-- `aggregates.json`: aggregate metrics from the session trace
-- `features.json`: `focus_process`, `total_bytes_written`, `noise_syscall_ratio`, `unique_processes`, `unique_files`, `kind_counts`, `top_processes`, `top_files`, and `top_writes`
-
-The ingester ignores non-empty lines that are not valid JSON `StreamRecord`
-values and counts them in `ignored_lines`.
-
-## Examples
-
-```bash
-ebpf-tracker --emit jsonl cargo run | cargo dataset --test-name cargo-run-smoke
-cargo dataset --replay logs/ebpf-tracker-YYYYMMDD-HHMMSS.log
-cargo dataset analyze --run datasets/<run-id> --provider lm-studio --model qwen/qwen3.5-9b
-cargo dataset analyze --run datasets/<run-id> --provider lm-studio --model qwen/qwen3.5-9b --live-logs
+```text
+analysis/lm-studio--qwen-qwen3.5-9b.md
+analysis/lm-studio--qwen-qwen3.5-9b.json
 ```
 
-## Limitations
+`--live-logs` mirrors analyzer progress to `stderr` and an analysis `.live.log`
+file. For LM Studio it also attempts to tail the newest server log below
+`$LM_STUDIO_LOG_ROOT` or `~/.lmstudio/server-logs`; failure to find/read one is
+reported and does not abort analysis.
 
-- The crate only processes newline-delimited JSON `StreamRecord` values.
-- Invalid or non-JSON lines are ignored rather than failing the ingest.
-- `openai-compatible` mode requires both `--endpoint` and `--model`.
+## Data And Credential Boundary
+
+Dataset bundles can contain process names, PIDs, file paths, command metadata,
+and derived behavior summaries. Keep them local by default, inspect them before
+sharing, and do not commit captures from sensitive workloads.
+
+Ingest itself does not upload data. Analyze mode sends a bounded derivative of
+the bundle to the configured endpoint. Confirm that the endpoint and model are
+approved for the data. Supplying `--api-key` can expose a token through shell
+history or process inspection; follow the endpoint operator's credential
+handling guidance and never commit credentials or live command transcripts.
+
+## Current Limits
+
+- Only newline-delimited shared `StreamRecord` JSON is accepted.
+- Invalid/non-JSON input is counted and skipped rather than failing ingest.
+- The feature rollup is syscall-session metadata, not a performance benchmark
+  or semantic correctness analysis.
+- Model output is untrusted interpretation and should be checked against the
+  bundle.
 - `--live-logs` tails LM Studio logs only for the `lm-studio` provider.
-- The crate writes local dataset bundles only; it does not upload them anywhere.
+- Bundles are local artifacts; retention, redaction, and deletion are the
+  operator's responsibility.

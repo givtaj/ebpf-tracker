@@ -1,4 +1,32 @@
+/*
+ * Workload scope: bpftrace -c exposes the wrapped command as cpid. Track every
+ * thread forked from that command so child processes remain visible without
+ * collecting execs from unrelated host workloads.
+ */
+BEGIN
+{
+  @ebpf_tracker_workload_tids[cpid] = 1;
+}
+
+tracepoint:sched:sched_process_fork
+/@ebpf_tracker_workload_tids[args->parent_pid]/
+{
+  @ebpf_tracker_workload_tids[args->child_pid] = 1;
+}
+
+tracepoint:sched:sched_process_exit
+/@ebpf_tracker_workload_tids[tid]/
+{
+  delete(@ebpf_tracker_workload_tids[tid]);
+}
+
 tracepoint:syscalls:sys_enter_execve
+/@ebpf_tracker_workload_tids[tid]/
 {
   printf("execve comm=%s pid=%d\n", comm, pid);
+}
+
+END
+{
+  clear(@ebpf_tracker_workload_tids);
 }

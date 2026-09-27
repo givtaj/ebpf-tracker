@@ -1,107 +1,152 @@
 # ebpf-tracker
 
-`ebpf-tracker` is the installable CLI in this workspace. It wraps commands such
-as `cargo run` or `npm run`, runs them inside a Linux Docker runtime, and
-attaches tracing for the lifetime of that session.
+> **Experimental alpha.** `ebpf-tracker` is useful today as a hackable,
+> session-level syscall recorder for trusted Rust and Node.js development
+> workflows. It is not a production observability agent, security sandbox, or
+> general-purpose application profiler.
 
-## Choose Your Path
+The CLI wraps a command such as `cargo run` or `npm run`, executes it in a
+Linux Docker runtime, and records selected syscall activity for the wrapped
+session. The result can be streamed as JSONL, saved for replay, opened in the
+browser dashboard, converted into a dataset, or exported over OTLP.
 
-If you want to trace your own project, start with the installable CLI and run a
-real smoke test:
+## Read This Before Running It
+
+The local tracing runtime currently starts a **privileged** container, joins
+the Docker host's **PID namespace**, and mounts the selected project
+**read-write** at `/workspace`. Consequently:
+
+- code in the wrapped command can modify the mounted project;
+- the tracing container has broad access to the Docker host or Docker Desktop
+  VM; and
+- trace output can include activity outside the intended workload when the
+  selected probe or transport observes it.
+
+**Do not use `ebpf-tracker` to run untrusted repositories, dependencies,
+commands, or test fixtures.** Use it only on a trusted development machine or,
+preferably, a disposable Linux VM/droplet with no sensitive neighboring
+workloads. Do not deploy the run-mode container on a shared or production
+host. Built-in/config-generated probes are workload-filtered, but any other
+custom bpftrace `--probe` fails closed unless the operator supplies
+`--allow-host-wide-probe`. That flag acknowledges potential host-wide
+observation; it does not add containment. See [SECURITY.md](./SECURITY.md) for
+the full trust and data boundary.
+
+## Golden Workflow
+
+From a source checkout, the bundled `session-io-demo` is the best-supported
+way to see the product's current value:
 
 ```bash
-ebpf-tracker /bin/true
-ebpf-tracker cargo run
+cargo demo --emit jsonl session-io-demo > /tmp/ebpf-tracker-demo.jsonl
 ```
 
-Expect the full wrapped session, including build tooling such as `cargo`,
-`rustc`, and linkers before your app starts.
+Prerequisites are a Rust toolchain, a running Docker engine that permits
+privileged containers, and a Linux/eBPF-capable Docker host or VM. The first
+run builds the runtime image. Application and build output remains visible on
+`stderr`; normalized trace records go to the JSONL file.
 
-If you want a terminal-first host overview on an SSH droplet, use:
+Expect records shaped like these (timestamps, PIDs, ordering, and surrounding
+build-tool events vary):
+
+```json
+{"type":"session","timestamp_unix_ms":1774500000000,"demo_name":"session-io-demo","product_name":"ebpf-tracker"}
+{"type":"syscall","timestamp_unix_ms":1774500000100,"kind":"execve","comm":"cargo","pid":1008}
+{"type":"syscall","timestamp_unix_ms":1774500000200,"kind":"open_at","comm":"session-io-demo","pid":1012,"file":"input/message.txt"}
+{"type":"syscall","timestamp_unix_ms":1774500000300,"kind":"connect","comm":"session-io-demo","pid":1012,"fd":3}
+```
+
+The raw probe spelling is `openat`; the normalized JSON enum value is
+`open_at`; aggregate metric names use `openat`. See the
+[event contract](./crates/ebpf-tracker-events/README.md) before building a
+consumer.
+
+For the browser experience, run this separately:
+
+```bash
+ebpf-tracker demo --dashboard session-io-demo
+```
+
+## Current Scope
+
+The useful path is deliberately narrow:
+
+- **Workloads:** trusted Rust and Node.js projects whose commands work in the
+  bundled Debian Bookworm runtime images (`rust:1-bookworm` and
+  `node:22-bookworm`). Host-installed tools and native dependencies are not
+  automatically available in those containers.
+- **Collection:** `bpftrace` by default; `perf trace` is an alternate,
+  best-effort transport.
+- **Events:** `execve`, `openat`, `write`, and `connect`, with `execve` as the
+  default when no config enables additional probes.
+- **Scope:** the complete wrapped session, so build tools and child processes
+  are expected. This is not app-only profiling.
+- **Platforms:** Docker must expose the required Linux kernel tracing features.
+  Native non-Linux execution is not supported; Docker Desktop behavior depends
+  on its Linux VM and Docker configuration.
+- **Packaging:** the root package and workspace crates are `publish = false`;
+  install from a checkout or Git tag rather than crates.io.
+
+The terminal monitor is a separate, read-only host snapshot:
 
 ```bash
 ebpf-tracker monitor --once --no-clear
 ```
 
-From a checkout, `bash scripts/host-ebpf-readiness.sh` prints a no-install
-inventory for host eBPF, Docker, kernel, and package readiness.
+It does not start the privileged tracing runtime. See
+[Host Monitoring](./docs/host-monitoring.md).
 
-If you want the product experience first, use one of the demo/dashboard entry
-points:
+## Attach Status
 
-```bash
-ebpf-tracker demo --dashboard session-io-demo
-ebpf-tracker see
-```
+`attach` is experimental and has two materially different behaviors:
 
-Run either command, not both at once. Each command opens the browser dashboard,
-preserves replay logs, and is a supported first-run path for bundled demos. The
-`cargo demo`, `cargo see`, and `cargo viewer` aliases are clone-only
-conveniences for people working from this repository.
+| Target and backend | Behavior today |
+| --- | --- |
+| `k8s` + `inspektor-gadget` | Live `kubectl gadget` execution |
+| `aws-eks` + `inspektor-gadget` | Live EKS kubeconfig update plus `kubectl gadget` execution; EC2-backed nodes only |
+| `k8s`/`aws-eks` + `tetragon` | Scaffold: prints a plan and does not attach |
+| `docker`/`aws-ecs` + `inspektor-gadget` | Scaffold: prints a plan and does not attach |
+| `docker`/`aws-ecs` + `tetragon` | Rejected as unsupported |
 
-The customer UX suite is documented in [`docs/customer-ux-e2e.md`](./docs/customer-ux-e2e.md).
-Its scripts may return `SKIP` on hosts that lack Docker or loopback support;
-maintainers can force those capability gaps to fail with `--strict-prereqs`.
-
-This README stays intentionally high level. The root should explain the product
-and the workspace shape. Detailed CLI behavior, install steps, and run modes
-belong in [`docs/cli.md`](./docs/cli.md).
-
-## What It Does
-
-- runs Rust and Node commands inside a managed Linux tracing runtime
-- traces the full wrapped session, not only the final app process
-- supports `bpftrace` by default and `perf trace` as an alternate transport
-- can emit raw terminal output or JSONL event streams
-- can launch a repo-local dashboard and replay stored sessions
-- can render a terminal-first host monitor for SSH droplets and development boxes
-- includes a no-install Linux host readiness script for clean eBPF setup planning
-
-If you run `ebpf-tracker cargo run`, you should expect to see the whole session:
-`cargo`, `rustc`, linkers, and then your app. The same idea applies to Node
-commands such as `npm run <script>`.
-
-The install, run, dashboard, config, and attach flows are documented in
-[`docs/cli.md`](./docs/cli.md). That page is the canonical source for command
-examples and operational behavior.
+A scaffold command may exit successfully after printing its plan; that is not
+evidence that tracing occurred. The exact prerequisites and commands are in
+the [CLI guide](./docs/cli.md#attach-mode-experimental).
 
 ## Workspace Map
 
-- **Root CLI (`ebpf-tracker`)**: installable command-line entry point, runtime orchestration, terminal `monitor`, config loading, `demo`, `see`, and experimental `attach` support (live `inspektor-gadget` on `k8s`/`aws-eks`, scaffold for other targets). Source lives under [`src/`](./src).
-- **`crates/ebpf-tracker-events`**: shared event schema, line parsers, and session aggregation helpers used across the workspace. [README](./crates/ebpf-tracker-events/README.md)
-- **`crates/ebpf-tracker-dataset`**: dataset bundle writer and analyzer for JSONL streams and replay logs. [README](./crates/ebpf-tracker-dataset/README.md)
-- **`crates/ebpf-tracker-otel`**: OTLP exporter plus local Jaeger helper commands. [README](./crates/ebpf-tracker-otel/README.md)
-- **`crates/ebpf-tracker-perf`**: `perf trace` normalizer and transport boundary for the non-default collector path. [README](./crates/ebpf-tracker-perf/README.md)
-- **`crates/ebpf-tracker-viewer`**: browser dashboard and replay viewer. [README](./crates/ebpf-tracker-viewer/README.md)
+- **Root CLI (`ebpf-tracker`)**: runtime orchestration, terminal `monitor`,
+  config loading, demos, dashboard launch, and experimental attach.
+- **[`ebpf-tracker-events`](./crates/ebpf-tracker-events/README.md)**: shared
+  parser, JSONL schema, and session aggregation.
+- **[`ebpf-tracker-dataset`](./crates/ebpf-tracker-dataset/README.md)**:
+  per-run dataset bundles and optional analysis.
+- **[`ebpf-tracker-otel`](./crates/ebpf-tracker-otel/README.md)**: OTLP exporter
+  and local Jaeger helpers.
+- **[`ebpf-tracker-perf`](./crates/ebpf-tracker-perf/README.md)**: `perf trace`
+  normalization for the alternate collector path.
+- **[`ebpf-tracker-viewer`](./crates/ebpf-tracker-viewer/README.md)**: browser
+  dashboard and replay viewer.
 
-These crates do separate jobs. The root README should not duplicate their full
-behavior contracts.
+See [Architecture](./architecture.md) for the data flow and trust boundaries.
 
-## Examples
+## More Workflows
 
-Runnable examples live under [`examples/`](./examples/README.md):
+Detailed install, run, config, dashboard, and attach behavior belongs in the
+[CLI guide](./docs/cli.md). Additional runnable examples are indexed under
+[`examples/`](./examples/README.md), including:
 
-- [`examples/session-io-demo`](./examples/session-io-demo/README.md): build-time plus runtime file, network, and output activity in one trace
-- [`examples/postcard-generator-rust`](./examples/postcard-generator-rust/README.md): visible postcard-generation flow in Rust
-- [`examples/postcard-generator-node`](./examples/postcard-generator-node/README.md): the same visible workflow in Node.js
+- [`session-io-demo`](./examples/session-io-demo/README.md): build-time and
+  runtime file, network, and output activity;
+- [`postcard-generator-rust`](./examples/postcard-generator-rust/README.md);
+  and
+- [`postcard-generator-node`](./examples/postcard-generator-node/README.md).
 
-Useful repo-local entry points:
+Maintainer-facing customer journeys are specified in
+[Customer UX E2E](./docs/customer-ux-e2e.md). A real external-project example
+is documented in [Trace `payment-engine`](./docs/trace-payment-engine.md).
 
-```bash
-cargo demo
-cargo demo --emit jsonl session-io-demo
-cargo demo --transport perf --emit jsonl session-io-demo
-cargo viewer --replay examples/session-io-demo/logs/ebpf-tracker-YYYYMMDD-HHMMSS.log
-bash scripts/dashboard-smoke.sh
-```
+## Project Policies
 
-## More Docs
-
-- [`docs/cli.md`](./docs/cli.md)
-- [`docs/customer-ux-e2e.md`](./docs/customer-ux-e2e.md)
-- [`docs/host-monitoring.md`](./docs/host-monitoring.md)
-- [`examples/README.md`](./examples/README.md)
-- [`docs/trace-payment-engine.md`](./docs/trace-payment-engine.md)
-- [`CONTRIBUTING.md`](./CONTRIBUTING.md)
-- [`SECURITY.md`](./SECURITY.md)
-- [`RELEASE.md`](./RELEASE.md)
+- [Contributing](./CONTRIBUTING.md)
+- [Security](./SECURITY.md)
+- [Release process](./RELEASE.md)

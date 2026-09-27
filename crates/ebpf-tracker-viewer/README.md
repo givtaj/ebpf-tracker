@@ -1,125 +1,99 @@
-# ebpf-tracker-viewer
+# `ebpf-tracker-viewer`
 
-Browser-based live trace dashboard and replay viewer for `ebpf-tracker`.
+> Experimental workspace crate. It is `publish = false`, and the UI is a local
+> development viewer rather than an authenticated production service.
 
-This crate ships the UI in [`assets/live-trace-matrix.js`](./assets/live-trace-matrix.js)
-and the bundled demo replays in [`demo-library/`](./demo-library/). The Rust
-binary is a small launcher: it resolves or materializes the Node script, starts
-`node`, forwards stdio, and opens the browser when the server announces its
-URL.
+`ebpf-tracker-viewer` provides a browser dashboard for live normalized streams
+and stored replay logs. The Rust binary resolves/materializes the bundled Node
+script, launches it, forwards stdio, and opens the announced URL when possible.
 
-## Commands
+## Prefer Replay For Safe UI Work
 
-Viewer help:
-
-```bash
-cargo viewer --help
-```
-
-Live trace with the default repo-local demo target:
+Replay does not start a new privileged trace:
 
 ```bash
-cargo viewer
-```
-
-Replay a stored log:
-
-```bash
-cargo viewer --replay logs/ebpf-tracker-YYYYMMDD-HHMMSS.log
-```
-
-Replay with an explicit port:
-
-```bash
+cargo viewer --replay crates/ebpf-tracker-viewer/demo-library/session-io-demo.jsonl
 cargo viewer --port 43118 --replay datasets/synthetic-jsonl-demo/events.jsonl
 ```
 
-Bind to another host or tune replay playback:
+Replay controls include restart, pause/resume, step forward/backward,
+fast-forward, speed, interval, and jump size. `--focus-comm` filters records to
+one command before processing:
 
 ```bash
-cargo viewer --host 0.0.0.0 --speed 2 --interval-ms 50 --focus-comm node --replay logs/ebpf-tracker-YYYYMMDD-HHMMSS.log
+cargo viewer --speed 2 --interval-ms 50 --focus-comm node \
+  --replay logs/ebpf-tracker-YYYYMMDD-HHMMSS.log
 ```
 
-Pass `--help` through to the traced command instead of the viewer:
+The bundled fixtures use the shared JSON contract, including `open_at` for the
+JSON event kind (`openat` remains the raw/aggregate spelling).
+
+## Live Mode
 
 ```bash
+cargo viewer
 cargo viewer -- cargo run --help
-```
-
-Run the binary directly:
-
-```bash
 cargo run -p ebpf-tracker-viewer -- --replay logs/ebpf-tracker-YYYYMMDD-HHMMSS.log
 ```
 
-## Behavior
-
-Without `--replay`, the wrapper traces a command session through
-`ebpf-tracker`. If no command is supplied, it defaults to:
+Without `--replay`, the launcher traces a command through `ebpf-tracker`. With
+no command, it defaults to:
 
 ```bash
 ebpf-tracker demo session-io-demo
 ```
 
-If `ebpf-tracker` is not available on `PATH`, the wrapper falls back to
-`./target/debug/ebpf-tracker` for clone-local workflows. If the command starts
-with `ebpf-tracker` or `./target/debug/ebpf-tracker`, the wrapper preserves
-that command and injects JSONL logging defaults when they are missing. The
-`demo` shorthand is rewritten to whichever tracker binary was resolved.
-
-The injected defaults are:
+If `ebpf-tracker` is not on `PATH`, clone-local mode falls back to
+`./target/debug/ebpf-tracker`. It preserves explicit tracker commands and
+injects these defaults when missing:
 
 - `--log-enable`
 - `--emit jsonl`
-- `--transport bpftrace` unless you already supplied a transport
+- `--transport bpftrace`
 
-Replay mode is enabled by `--replay`. In replay mode the viewer can:
+Live mode therefore inherits the root CLI's privileged-container, host-PID, and
+read-write-mount security boundary. Use it only for trusted code on an isolated
+development host. Replay mode is the appropriate choice when collector behavior
+is not under test.
 
-- restart
-- pause and resume
-- step forward or backward
-- fast-forward
-- adjust replay speed
-- adjust jump size
+## Bind And Browser Behavior
 
-`--speed` and `--interval-ms` only apply in replay mode. `--focus-comm`
-filters replay records to a single `comm` value before the viewer processes the
-log.
+The server binds to `127.0.0.1` by default. `--host` selects another address:
 
-`--host` controls the bind address used by the local viewer server.
+```bash
+cargo viewer --host 0.0.0.0 --replay logs/ebpf-tracker-YYYYMMDD-HHMMSS.log
+```
 
-The browser opens automatically on macOS, Linux, and Windows when the server
-announces `live trace viewer on ...`. If the configured port is busy, the
-viewer retries the next port up to 16 times.
+Binding beyond loopback exposes an unauthenticated development UI and trace
+data. Do so only on a controlled network with external access controls. If the
+port is occupied, the viewer tries up to 16 subsequent ports. Browser opening
+is attempted on macOS, Linux, and Windows after the server announces its URL.
 
-## Assets
+`--speed` and `--interval-ms` apply only to replay. Replay controls are disabled
+for a live stream.
 
-The launcher prefers the checked-in script at
-[`assets/live-trace-matrix.js`](./assets/live-trace-matrix.js). You can point
-`EBPF_TRACKER_VIEWER_SCRIPT` at a different file if you want to override it.
+## Assets And Cache
 
-If the script is not available at runtime, the crate materializes the embedded
-viewer assets into the cache root, in this order:
+The source asset is
+[`assets/live-trace-matrix.js`](./assets/live-trace-matrix.js). Override it with
+`EBPF_TRACKER_VIEWER_SCRIPT` for development. If checked-in assets are not
+available, the launcher materializes embedded files in this order:
 
-- `EBPF_TRACKER_CACHE_DIR`
-- `XDG_CACHE_HOME/ebpf-tracker`
-- `~/.cache/ebpf-tracker`
-- the system temp directory
+1. `EBPF_TRACKER_CACHE_DIR`
+2. `XDG_CACHE_HOME/ebpf-tracker`
+3. `~/.cache/ebpf-tracker`
+4. the system temp directory
 
-The generated viewer tree includes the script plus the bundled demo replays:
+The embedded demo library includes `session-io-demo`,
+`postcard-generator-rust`, and `postcard-generator-node`. Clone-local mode also
+discovers `.log` files under root `logs/` and `examples/*/logs/`.
 
-- `session-io-demo`
-- `postcard-generator-rust`
-- `postcard-generator-node`
+## Limits
 
-The live viewer also discovers recorded `.log` files under the repository
-`logs/` directory and under `examples/*/logs/` when those exist.
-
-## Current Limits
-
-- This crate is browser-first; it does not expose a separate native TUI.
-- Replay controls are disabled in live-stream mode.
-- The default live target is the tracker demo command, not a generic shell
-  command.
-- The bundled replays are fixed fixtures, not an exhaustive archive of all
-  possible sessions.
+- The UI is browser-first and has no native TUI.
+- The default live target is the bundled demo, not a generic shell.
+- Fixtures are curated examples, not compatibility or performance evidence.
+- Trace records can expose process names, PIDs, file paths, and command
+  metadata; inspect captures before sharing.
+- The viewer consumes whatever normalized stream it receives and cannot enforce
+  upstream probe scope.

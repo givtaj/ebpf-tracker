@@ -26,6 +26,18 @@ case "${transport}" in
       exit 2
     fi
 
+    case "${probe_file}" in
+      /probes/execve.bt|/probes/generated-config.bt)
+        ;;
+      *)
+        if [ "${EBPF_TRACKER_ALLOW_HOST_WIDE_PROBE:-0}" != "1" ]; then
+          echo "custom bpftrace probe ${probe_file} is not automatically workload-scoped and may observe host-wide events" >&2
+          echo "rerun with --allow-host-wide-probe to acknowledge that risk" >&2
+          exit 2
+        fi
+        ;;
+    esac
+
     export EBPF_TRACKER_ARG_COUNT="$#"
     index=1
     for arg in "$@"; do

@@ -10,19 +10,26 @@ run_dataset_smoke=0
 run_perf_smoke=0
 run_attach_smoke=0
 run_customer_ux=0
+run_isolation_smoke=0
+expected_version=""
 
 usage() {
   cat <<'EOF'
-Usage: bash scripts/release-check.sh [--with-runtime-smoke] [--with-demo-smoke] [--with-dashboard-smoke] [--with-dataset-smoke] [--with-perf-smoke] [--with-attach-smoke] [--with-customer-ux]
+Usage: bash scripts/release-check.sh [--expected-version <MAJOR.MINOR.PATCH>] [--with-runtime-smoke] [--with-demo-smoke] [--with-isolation-smoke] [--with-dashboard-smoke] [--with-dataset-smoke] [--with-perf-smoke] [--with-attach-smoke] [--with-customer-ux]
 
 Default behavior runs the fast generic release checks that are suitable for
-GitHub-hosted CI.
+GitHub-hosted CI. It is not sufficient by itself to approve a release tag.
+
+Use --expected-version to require an exact match with [workspace.package].version.
 
 Use --with-runtime-smoke on a maintainer machine to also run the Docker-backed
 tracing smoke path.
 
 Use --with-demo-smoke to additionally trace a real Rust demo command during
 the runtime smoke step.
+
+Use --with-isolation-smoke to prove wrapped descendants are captured while
+unrelated host exec noise is excluded.
 
 Use --with-dashboard-smoke to run the bundled replay viewer check.
 
@@ -35,20 +42,20 @@ runtime smoke.
 Use --with-attach-smoke to run the lightweight attach validation smoke.
 
 Use --with-customer-ux to run the full customer journey end-to-end suite via
-scripts/customer-ux-check.sh (if present in this checkout). This flag is
-strict and fails if Docker or loopback prerequisites are missing.
+scripts/customer-ux-check.sh. This flag is strict and fails on missing
+prerequisites or skipped journeys.
 EOF
 }
 
-customer_ux_prereqs_met() {
-  command -v docker >/dev/null 2>&1 || return 1
-  docker info >/dev/null 2>&1 || return 1
-  command -v python3 >/dev/null 2>&1 || return 1
-  python3 -c 'import socket; sock = socket.socket(); sock.bind(("127.0.0.1", 0)); sock.close()' >/dev/null 2>&1
-}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --expected-version)
+      shift
+      [[ $# -gt 0 ]] || { printf 'release-check: --expected-version requires a value\n' >&2; exit 1; }
+      expected_version="$1"
+      shift
+      ;;
     --with-runtime-smoke)
       run_runtime_smoke=1
       shift
@@ -56,6 +63,10 @@ while [[ $# -gt 0 ]]; do
     --with-demo-smoke)
       run_runtime_smoke=1
       run_demo_smoke=1
+      shift
+      ;;
+    --with-isolation-smoke)
+      run_isolation_smoke=1
       shift
       ;;
     --with-dashboard-smoke)
@@ -93,6 +104,24 @@ done
 
 cd "${repo_root}"
 
+
+workspace_version="$(
+  awk '
+    $0 == "[workspace.package]" { in_workspace_package = 1; next }
+    /^\[/ { in_workspace_package = 0 }
+    in_workspace_package && $1 == "version" {
+      gsub(/"/, "", $3)
+      print $3
+      exit
+    }
+  ' Cargo.toml
+)"
+[[ -n "${workspace_version}" ]] || { printf 'release-check: could not read workspace version\n' >&2; exit 1; }
+printf '[release-check] workspace version %s\n' "${workspace_version}"
+if [[ -n "${expected_version}" ]]; then
+  [[ "${expected_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { printf 'release-check: expected version must be MAJOR.MINOR.PATCH\n' >&2; exit 1; }
+  [[ "${workspace_version}" == "${expected_version}" ]] || { printf 'release-check: workspace version %s does not match expected %s\n' "${workspace_version}" "${expected_version}" >&2; exit 1; }
+fi
 echo "[release-check] cargo fmt --all --check"
 cargo fmt --all --check
 
@@ -130,6 +159,14 @@ else
   echo "[release-check] runtime smoke skipped; run bash scripts/release-check.sh --with-runtime-smoke before tagging on a Docker-capable maintainer machine"
 fi
 
+if [[ "${run_isolation_smoke}" -eq 1 ]]; then
+  [[ -f scripts/runtime-isolation-smoke.sh ]] || { printf 'release-check: scripts/runtime-isolation-smoke.sh is missing\n' >&2; exit 1; }
+  echo "[release-check] bash scripts/runtime-isolation-smoke.sh"
+  bash scripts/runtime-isolation-smoke.sh
+else
+  echo "[release-check] isolation smoke skipped; run bash scripts/release-check.sh --with-isolation-smoke before tagging"
+fi
+
 if [[ "${run_dashboard_smoke}" -eq 1 ]]; then
   echo "[release-check] bash scripts/dashboard-smoke.sh --check"
   bash scripts/dashboard-smoke.sh --check
@@ -152,18 +189,11 @@ else
 fi
 
 if [[ "${run_customer_ux}" -eq 1 ]]; then
-  if [[ -f "scripts/customer-ux-check.sh" ]]; then
-    if customer_ux_prereqs_met; then
-      echo "[release-check] bash scripts/customer-ux-check.sh"
-      bash scripts/customer-ux-check.sh
-    else
-      echo "[release-check] customer UX suite requested but this machine cannot satisfy Docker and loopback prerequisites"
-      exit 1
-    fi
-  else
-    echo "[release-check] customer UX suite requested but scripts/customer-ux-check.sh is missing in this checkout"
-    exit 1
-  fi
+  [[ -f scripts/customer-ux-check.sh ]] || { printf 'release-check: scripts/customer-ux-check.sh is missing\n' >&2; exit 1; }
+  echo "[release-check] bash scripts/customer-ux-check.sh --strict-prereqs --fail-on-skip"
+  bash scripts/customer-ux-check.sh --strict-prereqs --fail-on-skip
 else
   echo "[release-check] customer UX suite skipped; run bash scripts/release-check.sh --with-customer-ux to validate end-to-end customer journeys"
 fi
+
+echo "[release-check] PASS"

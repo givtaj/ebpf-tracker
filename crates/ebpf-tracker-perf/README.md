@@ -1,45 +1,63 @@
-# ebpf-tracker-perf
+# `ebpf-tracker-perf`
 
-Transport crate for the non-default `perf` path and future native
-kernel-to-userspace transport work.
+> Experimental workspace crate. It is `publish = false`; the current
+> `perf trace` adapter should not be confused with a native ring-buffer
+> transport or a stable public library API.
 
-What this crate does today:
+This crate normalizes Linux `perf trace` output into the shared
+`ebpf_tracker_events::StreamRecord` model and keeps the alternate transport
+logic outside the root CLI.
 
-- normalize Linux `perf trace` output into `StreamRecord` values
-- keep the CLI's transport boundary separate from the default `bpftrace` +
-  stdout path
-- provide a small userspace counter layer for aggregate metrics
-- leave perf-event-array and ring-buffer decisions out of the CLI crate
+## What Works Today
 
-Current coverage:
+- The root CLI accepts `--transport perf`.
+- `parse_perf_trace_line` accepts the project-specific shape
+  `timestamp: comm/pid syscall(args) = return`.
+- Supported raw syscall names are `execve`, `openat`, `write`, and `connect`.
+- `stream_record_for_perf_trace_line_at` creates `StreamRecord::Syscall`
+  values for supported lines.
+- `PerfTraceSession` emits aggregate metrics named `execve`, `openat`,
+  `writes`, and `connects`.
+- `default_perf_event_kinds()` returns only `execve`, matching the CLI default
+  when no config enables more probes.
+- `default_transport_plan()` describes the split between shipped bpftrace,
+  current `perf trace`, and future native transport work.
 
-- the root CLI can run with `--transport perf`
-- `parse_perf_trace_line` accepts the current `perf trace` shape used by this
-  project: `timestamp: comm/pid syscall(args) = return`
-- supported syscall kinds are `execve`, `openat`, `write`, and `connect`
-- `stream_record_for_perf_trace_line_at` turns supported lines into
-  `StreamRecord::Syscall`
-- `PerfTraceSession` emits `StreamRecord::Aggregate` values for `execve`,
-  `openat`, `writes`, and `connects`
-- `default_perf_event_kinds()` currently returns `execve` only, which matches
-  the default probe path in the CLI
-- `default_transport_plan()` documents the current split between the shipped
-  `bpftrace` stdout path, the available `perf trace` path, and future
-  perf-event-array / ring-buffer work
+Example from a source checkout:
 
-Current limitations:
+```bash
+ebpf-tracker --transport perf --emit jsonl cargo run
+```
 
-- file-path arguments are best-effort and may be omitted when `perf trace`
-  cannot decode userspace string pointers
-- `write` and `connect` parsing only captures the fields this crate already
-  normalizes: `count`/`len` for bytes and `fd`/`sockfd` for file descriptors
-- unsupported syscall names and malformed lines are ignored rather than
-  partially decoded
-- this crate does not provide direct perf-event-array or ring-buffer capture
-  yet
+Perf command mode follows the wrapped command and child processes. It is still
+executed through the project's privileged Docker runtime; choosing perf does
+not remove `privileged`, the host PID namespace, or the read-write project
+mount.
 
-Future work here:
+## Event Naming
 
-- direct perf-event-array transport
-- ring buffer transport
-- richer syscall argument decoding than plain `perf trace` can provide
+The collector/parser recognizes raw `openat`, but `EventKind::OpenAt` is
+serialized by Serde as JSON `"kind":"open_at"`. Aggregate metrics retain the
+name `openat`. Consumers should use the
+[`ebpf-tracker-events` contract](../ebpf-tracker-events/README.md), not raw perf
+spellings.
+
+## Limits
+
+- File paths are best-effort and can be absent when `perf trace` cannot decode
+  userspace string pointers.
+- `write` and `connect` retain only fields normalized today: byte count and file
+  descriptor.
+- Unsupported syscalls and malformed lines are ignored rather than partially
+  decoded.
+- This crate does not provide perf-event-array or eBPF ring-buffer capture.
+- Syscall counts vary with host, cache state, dependencies, and command; they
+  are not performance benchmarks.
+- Process names, PIDs, paths, and descriptors are potentially sensitive trace
+  metadata.
+
+## Future Work, Not Current Capability
+
+- direct perf-event-array transport;
+- ring-buffer transport; and
+- richer argument decoding than plain `perf trace` can provide.

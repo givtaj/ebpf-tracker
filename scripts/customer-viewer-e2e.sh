@@ -55,7 +55,7 @@ show_log_tail() {
   local label="$1"
   local file="$2"
   if [[ -f "$file" ]]; then
-    printf '--- %s (tail) ---\n' "$label" >&2
+    printf -- '--- %s (tail) ---\n' "$label" >&2
     tail -n 40 "$file" >&2 || true
   fi
 }

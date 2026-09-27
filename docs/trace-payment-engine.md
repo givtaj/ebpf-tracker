@@ -1,30 +1,39 @@
 # Trace `givtaj/payment-engine`
 
-This guide shows how to use an installed `eBPF_tracker` binary against a real
-public Rust project:
+This guide applies the current experimental `ebpf-tracker` workflow to a real
+external Rust project:
 
-- repo: <https://github.com/givtaj/payment-engine>
-- app shape: Rust CLI that reads `transactions.csv` and writes account balances
-  to `stdout`
+- repository: <https://github.com/givtaj/payment-engine>
+- application shape: a Rust CLI that reads `transactions.csv` and writes
+  account balances to standard output
 
-Why this is a good customer-facing example:
+This is a compatibility example, not an endorsement or a promise that every
+revision of the external repository will keep working. Review the checkout and
+its dependencies before executing it. The tracer runs the target in a
+privileged container with the Docker host PID namespace and a read-write bind
+mount; use an isolated development host and never trace untrusted code.
 
-- it is not part of this repository
-- it builds with plain Cargo
-- it opens CSV inputs, writes CSV outputs, and has a useful `cargo test` flow
-- it shows why `--emit jsonl` matters when the wrapped app already uses
-  `stdout`
+## Prerequisites
 
-## 1. Clone The Target Repo
+- an installed `ebpf-tracker` binary from this repository;
+- Git and a Rust toolchain;
+- a Docker engine that permits privileged containers and exposes Linux eBPF
+  facilities; and
+- a trusted `payment-engine` checkout with a suitable `transactions.csv`.
+
+## 1. Clone And Review The Target
 
 ```bash
 git clone https://github.com/givtaj/payment-engine.git
 cd payment-engine
 ```
 
-## 2. Add A Trace Config
+Inspect the revision and its dependencies before continuing. Pin a commit if
+you need a repeatable result.
 
-Create `ebpf-tracker.toml` in the `payment-engine` repo:
+## 2. Enable File And Output Events
+
+Create `ebpf-tracker.toml` in the target repository:
 
 ```toml
 [probe]
@@ -34,45 +43,38 @@ open = true
 connect = false
 ```
 
-This is a file-heavy CLI, so `open` and `write` are the useful defaults. It
-does not need network tracing for the main demo flow.
+This config produces a generated bpftrace probe scoped to the wrapped process
+tree. That reduces unrelated trace data, but does not reduce the container's
+privilege or turn the command into a sandbox.
 
-## 3. Trace A Real Run
-
-Use JSONL mode so the trace stays on `stdout` and the payment engine's normal
-CSV output remains human-readable on `stderr`:
+## 3. Capture A JSONL Trace
 
 ```bash
-eBPF_tracker --config ebpf-tracker.toml --emit jsonl cargo run -- transactions.csv | tee trace.jsonl
+ebpf-tracker --config ebpf-tracker.toml --emit jsonl \
+  cargo run -- transactions.csv > trace.jsonl
 ```
 
-What you should see:
+In JSONL mode, normalized trace records use `stdout`; Cargo and application
+output remain readable on `stderr`. The underlying command's exit status is
+preserved.
 
-- JSON Lines records on `stdout`
-- the payment engine still prints its final CSV result
-- one important line in the trace is:
+Look for records shaped like these; timestamps and PIDs will differ:
 
 ```json
-{"type":"syscall","kind":"openat","comm":"payments_engine","file":"transactions.csv",...}
+{"type":"syscall","timestamp_unix_ms":1774500000100,"kind":"execve","comm":"payments_engine","pid":2100}
+{"type":"syscall","timestamp_unix_ms":1774500000200,"kind":"open_at","comm":"payments_engine","pid":2100,"file":"transactions.csv"}
+{"type":"syscall","timestamp_unix_ms":1774500000300,"kind":"write","comm":"payments_engine","pid":2100,"bytes":18}
 ```
 
-You should also see `write` events from `payments_engine` when it emits the
-account CSV.
+The naming layers are intentionally different:
 
-## 3.1 Sample Observed Events
+- bpftrace/raw event name: `openat`
+- normalized JSON `kind`: `open_at`
+- aggregate metric name: `openat`
 
-From a real traced run of `payment-engine`, the useful app-level signal looked
-like this:
+JSON consumers must preserve the underscore in the `open_at` kind.
 
-```json
-{"type":"syscall","kind":"execve","comm":"payments_engine",...}
-{"type":"syscall","kind":"openat","comm":"payments_engine","file":"transactions.csv",...}
-{"type":"syscall","kind":"write","comm":"payments_engine","bytes":10,...}
-{"type":"syscall","kind":"write","comm":"payments_engine","bytes":18,...}
-{"type":"syscall","kind":"write","comm":"payments_engine","bytes":16,...}
-```
-
-The app's own output still appeared during the same traced run:
+The application's own output should still appear during the run, for example:
 
 ```text
 Processed 9 records, skipped 0 invalid lines.
@@ -81,77 +83,65 @@ client,available,held,total,locked
 1,-0.5,0.0,-0.5,true
 ```
 
-The raw session also included a lot of expected build/runtime noise from
-`cargo`, `rustc`, `ld`, and the container runtime. That is why the next step is
-usually to filter the JSONL stream down to `payments_engine`.
+Exact business output depends on the input file and target revision.
 
-## 4. Filter The Stream
+## 4. Focus On The Application
 
-Because `eBPF_tracker` traces the full wrapped Cargo session, the raw stream
-includes `cargo`, `rustc`, linker, and container setup noise. The clean way to
-inspect the app itself is to filter the JSONL stream:
+The trace intentionally includes the complete wrapped Cargo process tree:
+`cargo`, `rustc`, linkers, and the application. Filter the stored stream for
+the target command and input path:
 
 ```bash
-eBPF_tracker --config ebpf-tracker.toml --emit jsonl cargo run -- transactions.csv \
-  | rg '"comm":"payments_engine"|"file":"transactions.csv"'
+rg '"comm":"payments_engine"|"comm":"payments_engin"|"file":"transactions.csv"' trace.jsonl
 ```
 
-That gives you a tighter app-focused view without changing the underlying
-trace.
+Linux `comm` is limited to 15 characters, so `payments_engine` may appear as
+`payments_engin`. Filtering is a presentation step; the built-in generated
+probe already excludes processes outside the wrapped workload tree.
 
-## 5. What `eBPF_tracker` Measured
+## 5. Understand Historical Counts
 
-For a larger project-shaped run, I generated a synthetic
-`transactions-10000.csv` with 10,000 records and traced this command:
+One earlier 10,000-record experiment used:
 
 ```bash
-eBPF_tracker --config ebpf-tracker.toml --transport perf --emit jsonl cargo run --release -- transactions-10000.csv
+ebpf-tracker --config ebpf-tracker.toml --transport perf --emit jsonl \
+  cargo run --release -- transactions-10000.csv
 ```
 
-This is what came from `eBPF_tracker` itself:
+That run observed 41,739 JSONL records: 158 `execve`, 13,097 `openat`, 28,472
+`write`, and 8 `connect` aggregate events, with 54 records attributed to the
+truncated `payments_engin` command. These are historical observations from one
+host, input, target revision, cache state, and collector. They are not a
+benchmark or an expected assertion for a new run.
 
-- full traced run produced `41,739` JSONL records
-- aggregate counts at the end of the run:
-  - `execve = 158`
-  - `openat = 13097`
-  - `writes = 28472`
-  - `connects = 8`
-- app-specific records with `comm="payments_engin"`: `54`
-- app-specific `write` records: `5`
+The counts describe syscall event volume. They do not measure CPU time, memory,
+instructions retired, request latency, or business correctness. With the
+`perf` transport, file paths are best-effort and may be absent when `perf trace`
+cannot decode userspace string pointers.
 
-Notes:
+## 6. Trace Tests
 
-- Linux truncates `comm` to 15 characters, so `payments_engine` appears as
-  `payments_engin` in the stream.
-- These counts describe syscall behavior and event volume for the wrapped Cargo
-  session.
-- They do not describe CPU time, memory usage, instructions retired, or other
-  hardware-performance metrics.
-- The tracing workflow now isolates Cargo build outputs inside the container,
-  so running `eBPF_tracker` against `cargo run` should not leave Linux
-  artifacts in the host repo's `target/` tree.
-
-## 6. Trace The Test Suite
-
-The same repo is also a good `cargo test` example because it opens multiple CSV
-fixtures under `tests/data`:
+The same pattern can cover test fixtures:
 
 ```bash
-eBPF_tracker --config ebpf-tracker.toml --emit jsonl cargo test \
-  | rg '"comm":"payments_engine"|"file":"tests/data'
+ebpf-tracker --config ebpf-tracker.toml --emit jsonl cargo test > test-trace.jsonl
+rg '"comm":"payments_engine"|"comm":"payments_engin"|tests/data' test-trace.jsonl
 ```
 
-This is a strong example of build-time plus runtime plus test-fixture activity
-in one trace session.
+This combines build, test harness, fixture access, and child-process activity
+in one session. It is still syscall metadata, not a semantic test-coverage
+tool.
 
-## Notes
+## Next Steps And Limits
 
-- If you want a full machine-readable trace, keep `trace.jsonl`.
-- You can replay that stored trace with the viewer crate via
-  `cargo viewer --replay trace.jsonl`.
-- If you want the business output only, run the payment engine once without
-  tracing.
-- The current product still traces the whole command session, so filtering is
-  part of the intended Unix workflow today.
-- If a repo was already traced with an older version and now has Linux binaries
-  under `target/` on macOS, rebuild it natively or run `cargo clean` once.
+- Keep `trace.jsonl` or `test-trace.jsonl` only if their process/path metadata
+  is safe to retain and share.
+- From an `ebpf-tracker` source checkout, replay a trace with
+  `cargo viewer --replay /path/to/trace.jsonl`.
+- Run the payment engine without tracing when you need unmodified business
+  output only.
+- Host-installed native libraries are not automatically available inside the
+  bundled Rust Bookworm runtime.
+- An arbitrary custom `--probe` is not automatically workload-scoped and
+  requires the explicit host-wide acknowledgement documented in the
+  [CLI guide](./cli.md#custom-bpftrace-probes).
