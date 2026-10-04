@@ -64,7 +64,10 @@ pub(crate) fn build_compose_command(config: ComposeRunConfig<'_>) -> Command {
 #[cfg(test)]
 mod tests {
     use super::{build_compose_command, ComposeRunConfig};
-    use crate::{runtime::container_cargo_target_dir, runtime::RuntimeProfile, TransportMode};
+    use crate::{
+        runtime::{container_cargo_home_dir, container_cargo_target_dir, RuntimeProfile},
+        TransportMode,
+    };
     use std::path::Path;
 
     #[test]
@@ -101,6 +104,11 @@ mod tests {
                 "--rm".to_string(),
                 "-e".to_string(),
                 "EBPF_TRACKER_TRANSPORT=bpftrace".to_string(),
+                "-e".to_string(),
+                format!(
+                    "CARGO_HOME={}",
+                    container_cargo_home_dir(Path::new("/workspace/demo"))
+                ),
                 "-e".to_string(),
                 format!(
                     "CARGO_TARGET_DIR={}",

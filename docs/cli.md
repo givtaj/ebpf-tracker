@@ -114,6 +114,26 @@ include `cargo`, `rustc`, linkers, and the app; Node sessions can include `npm`,
 not app-only profiling. The wrapper preserves the underlying command's exit
 status.
 
+Rust runs cache both `CARGO_HOME` and `CARGO_TARGET_DIR` in Docker volumes keyed
+by the project path. That keeps registry downloads and build artifacts out of
+the project checkout while making later traced `cargo` sessions substantially
+warmer than the first run.
+
+For app-level behavior, build first and trace the produced Linux binary instead
+of tracing `cargo run`:
+
+```bash
+cargo build --release
+ebpf-tracker ./target/release/my-app --flag value
+```
+
+That keeps the trace focused on the application process and its runtime child
+threads. Use `ebpf-tracker cargo run` when you intentionally want build-tool,
+compiler, dependency, and application activity in one session trace.
+The binary must be runnable inside the Linux tracing runtime. On macOS, build
+for Linux in a compatible container or remote Linux host before using this
+direct-binary path.
+
 ### Workload Scoping
 
 The default `/probes/execve.bt` and probes generated from

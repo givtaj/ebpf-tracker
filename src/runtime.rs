@@ -10,6 +10,7 @@ const NODE_COMPOSE_FILE_NAME: &str = "docker-compose.bpftrace.node.yml";
 const RUST_DOCKERFILE_NAME: &str = "docker/bpftrace-rust.Dockerfile";
 const NODE_DOCKERFILE_NAME: &str = "docker/bpftrace-node.Dockerfile";
 const GENERATED_RUNTIME_ROOT_PREFIX: &str = "runtime-v";
+const CONTAINER_CARGO_HOME_ROOT: &str = "/cargo-home";
 const CONTAINER_CARGO_TARGET_ROOT: &str = "/cargo-target";
 const CONTAINER_NPM_CACHE_ROOT: &str = "/npm-cache";
 const RUN_SCRIPT_NAME: &str = "scripts/run-bpftrace-wrap.sh";
@@ -182,6 +183,10 @@ pub(crate) fn configure_runtime_command(
     match profile {
         RuntimeProfile::Rust => {
             command.arg("-e").arg(format!(
+                "CARGO_HOME={}",
+                container_cargo_home_dir(project_dir)
+            ));
+            command.arg("-e").arg(format!(
                 "CARGO_TARGET_DIR={}",
                 container_cargo_target_dir(project_dir)
             ));
@@ -193,6 +198,13 @@ pub(crate) fn configure_runtime_command(
             ));
         }
     }
+}
+
+pub(crate) fn container_cargo_home_dir(project_dir: &Path) -> String {
+    format!(
+        "{CONTAINER_CARGO_HOME_ROOT}/{:016x}",
+        project_dir_hash(project_dir)
+    )
 }
 
 pub(crate) fn container_cargo_target_dir(project_dir: &Path) -> String {
@@ -353,9 +365,9 @@ fn project_dir_hash(project_dir: &Path) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        container_cargo_target_dir, container_npm_cache_dir, parse_runtime_selection,
-        resolve_compose_file_from_context, resolve_runtime_profile, RuntimeAssetSource,
-        RuntimeProfile, RuntimeSelection,
+        container_cargo_home_dir, container_cargo_target_dir, container_npm_cache_dir,
+        parse_runtime_selection, resolve_compose_file_from_context, resolve_runtime_profile,
+        RuntimeAssetSource, RuntimeProfile, RuntimeSelection,
     };
     use std::fs;
     use std::path::Path;
@@ -433,6 +445,10 @@ mod tests {
         let project_dir = Path::new("/tmp/payment-engine");
 
         assert_eq!(
+            container_cargo_home_dir(project_dir),
+            container_cargo_home_dir(project_dir)
+        );
+        assert_eq!(
             container_cargo_target_dir(project_dir),
             container_cargo_target_dir(project_dir)
         );
@@ -447,6 +463,10 @@ mod tests {
         let first = Path::new("/tmp/payment-engine");
         let second = Path::new("/tmp/session-io-demo");
 
+        assert_ne!(
+            container_cargo_home_dir(first),
+            container_cargo_home_dir(second)
+        );
         assert_ne!(
             container_cargo_target_dir(first),
             container_cargo_target_dir(second)

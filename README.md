@@ -10,6 +10,13 @@ Linux Docker runtime, and records selected syscall activity for the wrapped
 session. The result can be streamed as JSONL, saved for replay, opened in the
 browser dashboard, converted into a dataset, or exported over OTLP.
 
+For Rust apps, trace `cargo run` when build and dependency activity is part of
+the session you want to inspect. When the goal is app-only behavior, build the
+Linux binary first and run `ebpf-tracker ./target/release/<binary> ...` so the
+trace is not dominated by Cargo, compiler, or registry-cache activity. On macOS,
+that app binary must still be built for Linux, for example on a remote Linux
+host or inside a compatible container.
+
 ## Read This Before Running It
 
 The local tracing runtime currently starts a **privileged** container, joins

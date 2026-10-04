@@ -4,7 +4,9 @@ This file tracks notable repo changes in progress on this branch.
 
 ## Unreleased
 
-_No unreleased changes._
+### Changed
+
+- Added a persisted Rust `CARGO_HOME` cache to the managed tracing runtime and documented the build-first direct-binary workflow for app-level Rust traces.
 
 ## v0.1.1 - 2026-09-27
 
