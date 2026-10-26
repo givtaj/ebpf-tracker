@@ -3,6 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/.." && pwd)"
+source "${script_dir}/release-version.sh"
 run_runtime_smoke=0
 run_demo_smoke=0
 run_dashboard_smoke=0
@@ -15,12 +16,13 @@ expected_version=""
 
 usage() {
   cat <<'EOF'
-Usage: bash scripts/release-check.sh [--expected-version <MAJOR.MINOR.PATCH>] [--with-runtime-smoke] [--with-demo-smoke] [--with-isolation-smoke] [--with-dashboard-smoke] [--with-dataset-smoke] [--with-perf-smoke] [--with-attach-smoke] [--with-customer-ux]
+Usage: bash scripts/release-check.sh [--expected-version <VERSION>] [--with-runtime-smoke] [--with-demo-smoke] [--with-isolation-smoke] [--with-dashboard-smoke] [--with-dataset-smoke] [--with-perf-smoke] [--with-attach-smoke] [--with-customer-ux]
 
 Default behavior runs the fast generic release checks that are suitable for
 GitHub-hosted CI. It is not sufficient by itself to approve a release tag.
 
 Use --expected-version to require an exact match with [workspace.package].version.
+Versions may be MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-{alpha,beta,rc}.N.
 
 Use --with-runtime-smoke on a maintainer machine to also run the Docker-backed
 tracing smoke path.
@@ -117,11 +119,20 @@ workspace_version="$(
   ' Cargo.toml
 )"
 [[ -n "${workspace_version}" ]] || { printf 'release-check: could not read workspace version\n' >&2; exit 1; }
+is_release_version "${workspace_version}" || { printf 'release-check: invalid workspace release version\n' >&2; exit 1; }
 printf '[release-check] workspace version %s\n' "${workspace_version}"
 if [[ -n "${expected_version}" ]]; then
-  [[ "${expected_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { printf 'release-check: expected version must be MAJOR.MINOR.PATCH\n' >&2; exit 1; }
+  is_release_version "${expected_version}" || { printf 'release-check: expected version must be MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-{alpha,beta,rc}.N\n' >&2; exit 1; }
   [[ "${workspace_version}" == "${expected_version}" ]] || { printf 'release-check: workspace version %s does not match expected %s\n' "${workspace_version}" "${expected_version}" >&2; exit 1; }
 fi
+echo "[release-check] bash scripts/release-tooling-test.sh"
+bash scripts/release-tooling-test.sh
+echo "[release-check] bash scripts/test-customer-cli-resolution.sh"
+bash scripts/test-customer-cli-resolution.sh
+echo "[release-check] helper format and workload exit-status regression checks"
+rustfmt --check scripts/exec-target-from-env.rs
+bash scripts/test-bpftrace-exit-status.sh
+
 echo "[release-check] cargo fmt --all --check"
 cargo fmt --all --check
 
@@ -132,13 +143,24 @@ echo "[release-check] cargo build --workspace --locked"
 cargo build --workspace --locked
 
 echo "[release-check] cargo build --release --locked --bin ebpf-tracker"
-cargo build --release --locked --bin ebpf-tracker
+cargo build --release --locked --bin ebpf-tracker --target-dir "${repo_root}/target"
 
-echo "[release-check] cargo run --locked --bin ebpf-tracker -- --help"
-cargo run --locked --bin ebpf-tracker -- --help
+# Customer journey scripts prefer PATH; force them to use this release candidate.
+export PATH="${repo_root}/target/release:${PATH}"
+tracker_binary="${repo_root}/target/release/ebpf-tracker"
+export EBPF_TRACKER_TEST_BINARY="${tracker_binary}"
+actual_version="$("${tracker_binary}" --version)"
+[[ "${actual_version}" == "ebpf-tracker ${workspace_version}" ]] || { printf 'release-check: built binary version mismatch: %s\n' "${actual_version}" >&2; exit 1; }
 
-echo "[release-check] cargo run --locked --bin ebpf-tracker -- demo --list"
-cargo run --locked --bin ebpf-tracker -- demo --list
+echo "[release-check] built release binary --help / replay --help / demo --list"
+"${tracker_binary}" --help
+"${tracker_binary}" replay --help
+"${tracker_binary}" demo --list
+
+if [[ "${run_customer_ux}" -eq 1 || "${run_dashboard_smoke}" -eq 1 ]]; then
+  echo "[release-check] root CLI offline replay smoke"
+  bash scripts/replay-smoke.sh --tracker "${tracker_binary}"
+fi
 
 if [[ "${run_runtime_smoke}" -eq 1 ]]; then
   echo "[release-check] bash scripts/runtime-smoke.sh"

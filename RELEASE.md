@@ -4,16 +4,30 @@ This is the maintainer checklist for public releases of `ebpf-tracker`.
 Releases are GitHub-first: workspace crates remain `publish = false`, so the
 tagged source tree and attached binary archives are the public artifacts.
 
+## Current Candidate
+
+`0.2.0-alpha.1` is being prepared around the
+[focused alpha contract](./docs/alpha-scope.md): trusted command tracing,
+JSONL capture, and local replay. It is not published merely because the
+workspace has this version. Runtime gates, both platform archives, and
+checksums must pass before publication.
+
 ## Versioning
 
 - Keep the workspace version in [Cargo.toml](./Cargo.toml) on the release line.
-- Use annotated `vMAJOR.MINOR.PATCH` tags for GitHub releases.
+- Use annotated `vMAJOR.MINOR.PATCH` tags, or prereleases such as
+  `v0.2.0-alpha.1`. Supported prerelease channels are `alpha.N`, `beta.N`, and
+  `rc.N`, with no leading zeroes in numeric components.
+- Prerelease tags are marked as prereleases on GitHub; do not promote an alpha
+  to a stable release.
 - Bump the version and finalize [CHANGELOG.md](./CHANGELOG.md) before tagging.
 - Leave internal workspace crates unpublished unless the release plan changes.
 
 ## Pre-Release Checklist
 
 1. Move all shipped changes from `Unreleased` into a dated version section in [CHANGELOG.md](./CHANGELOG.md).
+   Update [.github/release-notes.md](./.github/release-notes.md), including its
+   version-pinned links, for the release being published.
 2. Confirm the support and trust boundaries in [README.md](./README.md), [SECURITY.md](./SECURITY.md), and [docs/cli.md](./docs/cli.md) still match the implementation.
 3. Confirm example docs still point to runnable commands in [examples/README.md](./examples/README.md).
 4. Verify GitHub private vulnerability reporting or the documented security contact is available.
@@ -34,14 +48,14 @@ loopback interface:
 
 ```bash
 bash scripts/release-check.sh \
-  --expected-version 0.1.1 \
+  --expected-version 0.2.0-alpha.1 \
   --with-runtime-smoke \
   --with-demo-smoke \
   --with-isolation-smoke \
   --with-customer-ux
 ```
 
-Replace `0.1.1` with the version being released. This gate verifies formatting,
+Replace `0.2.0-alpha.1` with the version being released. This gate verifies formatting,
 the locked workspace tests and builds, CLI discovery, a real traced workload,
 descendant capture and unrelated-process exclusion, and all supported customer
 journeys. `--with-customer-ux` is strict: a missing prerequisite or skipped
@@ -63,9 +77,20 @@ The tag workflow applies the same strict gate. It does not substitute lighter
 checks when the runner lacks required capabilities: release validation must
 succeed before any platform archives can be built or published.
 
+Before publication, asset assembly also unpacks the Linux archive on a fresh
+runner whose checkout is at a different path. It verifies embedded demo,
+runtime, and viewer assets, real Rust and Node captures, and offline replay
+through the installed binary. Any failure prevents publication.
+
+Pull requests and `main` run the strict Linux gate as well. The release
+workflow also supports manual dispatch on a selected revision: it validates,
+builds both archives, and assembles checksums as Actions artifacts without
+publishing. Manual dispatch becomes available once that workflow change is on
+the default branch. Only an annotated release-tag push starts publication.
+
 ## Tag And Release
 
-1. Update the workspace version and lockfile.
+1. Update the workspace version, internal dependency requirements, and lockfile.
 2. Finalize the dated changelog entry.
 3. Run the complete required verification above.
 4. Commit and push the release preparation to `main`; wait for CI to pass.
@@ -75,6 +100,8 @@ succeed before any platform archives can be built or published.
 git tag -a vX.Y.Z -m "ebpf-tracker vX.Y.Z"
 git push origin vX.Y.Z
 ```
+
+For this candidate use `v0.2.0-alpha.1` in place of `vX.Y.Z`.
 
 6. Wait for every `release` workflow job to pass: strict validation, both platform builds, asset assembly, and publication.
 7. Verify the release notes, archives, and checksums on the GitHub release page.

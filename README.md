@@ -1,14 +1,26 @@
 # ebpf-tracker
 
-> **Experimental alpha.** `ebpf-tracker` is useful today as a hackable,
-> session-level syscall recorder for trusted Rust and Node.js development
-> workflows. It is not a production observability agent, security sandbox, or
-> general-purpose application profiler.
+> **Focused alpha candidate: `0.2.0-alpha.1`.** Trace one trusted development
+> command, inspect its process and I/O activity, and replay the capture locally.
+> Publication depends on the [release gates](./RELEASE.md); this version label
+> alone does not mean a release has been published.
 
 The CLI wraps a command such as `cargo run` or `npm run`, executes it in a
 Linux Docker runtime, and records selected syscall activity for the wrapped
-session. The result can be streamed as JSONL, saved for replay, opened in the
-browser dashboard, converted into a dataset, or exported over OTLP.
+session. Save the result as JSONL and reopen it in the local browser viewer.
+
+The alpha focuses on two uses:
+
+- **Debug a development run:** see which processes ran and which file opens,
+  writes, and connection attempts the selected probes observed.
+- **Explain or reproduce a run:** save a trace, replay it, and inspect a
+  specific process without rerunning the workload.
+
+Linux Docker with `bpftrace` is the primary tracing target. Rust and Node.js
+commands must work in the bundled runtime images. Cloud attachment, host
+monitoring, `perf`, AI analysis, datasets, and OTLP remain available as
+experimental extras; development of those features is deferred during this
+alpha. See the [alpha scope and acceptance criteria](./docs/alpha-scope.md).
 
 For Rust apps, trace `cargo run` when build and dependency activity is part of
 the session you want to inspect. When the goal is app-only behavior, build the
@@ -41,17 +53,40 @@ the full trust and data boundary.
 
 ## Golden Workflow
 
-From a source checkout, the bundled `session-io-demo` is the best-supported
-way to see the product's current value:
+Build the candidate from this checkout:
 
 ```bash
-cargo demo --emit jsonl session-io-demo > /tmp/ebpf-tracker-demo.jsonl
+cargo install --path . --locked
+ebpf-tracker --version
 ```
 
-Prerequisites are a Rust toolchain, a running Docker engine that permits
-privileged containers, and a Linux/eBPF-capable Docker host or VM. The first
-run builds the runtime image. Application and build output remains visible on
-`stderr`; normalized trace records go to the JSONL file.
+Then record the bundled demo and replay it:
+
+```bash
+ebpf-tracker demo --emit jsonl session-io-demo > trace.jsonl
+ebpf-tracker replay trace.jsonl
+```
+
+Source installation needs Rust (plus `pkg-config` and OpenSSL development
+headers on Linux). Recording needs a running Docker engine with privileged
+containers and Linux/eBPF support. The first recording builds the runtime
+image. The bundled Rust demos also require Cargo on the host for their cleanup
+step, including when using a downloaded binary. Replay and the dashboard need
+Node.js on the host; replay does not start Docker. Application and build output stays on `stderr`; normalized
+trace records go to the JSONL file. The demo enables all four probes.
+
+For your own project, copy [`ebpf-tracker.toml.example`](./ebpf-tracker.toml.example)
+to `ebpf-tracker.toml`, then run:
+
+```bash
+ebpf-tracker --config ebpf-tracker.toml --emit jsonl cargo run > trace.jsonl
+# Or: ebpf-tracker --config ebpf-tracker.toml --emit jsonl npm test > trace.jsonl
+ebpf-tracker replay trace.jsonl
+```
+
+Without a config, only `execve` is enabled. These are syscall attempts: the
+trace does not prove I/O success, report remote connection addresses, or
+measure application latency.
 
 Expect records shaped like these (timestamps, PIDs, ordering, and surrounding
 build-tool events vary):
@@ -82,8 +117,8 @@ The useful path is deliberately narrow:
   bundled Debian Bookworm runtime images (`rust:1-bookworm` and
   `node:22-bookworm`). Host-installed tools and native dependencies are not
   automatically available in those containers.
-- **Collection:** `bpftrace` by default; `perf trace` is an alternate,
-  best-effort transport.
+- **Collection:** `bpftrace` for the alpha workflow; `perf trace` remains an
+  experimental alternate transport outside the alpha contract.
 - **Events:** `execve`, `openat`, `write`, and `connect`, with `execve` as the
   default when no config enables additional probes.
 - **Scope:** the complete wrapped session, so build tools and child processes

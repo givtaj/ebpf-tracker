@@ -9,7 +9,17 @@ fail() {
   exit 1
 }
 
-command -v cargo >/dev/null 2>&1 || fail "cargo is required"
+tracker_cmd=()
+if [[ -n "${EBPF_TRACKER_TEST_BINARY:-}" ]]; then
+  tracker_binary="$(command -v "${EBPF_TRACKER_TEST_BINARY}")" || fail "test binary was not found: ${EBPF_TRACKER_TEST_BINARY}"
+  [[ -x "${tracker_binary}" && ! -d "${tracker_binary}" ]] || fail "test binary is not executable: ${tracker_binary}"
+  tracker_binary="$(cd -- "$(dirname -- "${tracker_binary}")" && pwd)/$(basename -- "${tracker_binary}")"
+  tracker_cmd=("${tracker_binary}")
+else
+  cargo_binary="$(command -v cargo)" || fail "cargo is required"
+  cargo_binary="$(cd -- "$(dirname -- "${cargo_binary}")" && pwd)/$(basename -- "${cargo_binary}")"
+  tracker_cmd=("${cargo_binary}" run --manifest-path "${repo_root}/Cargo.toml" --locked --quiet --bin ebpf-tracker --)
+fi
 command -v docker >/dev/null 2>&1 || fail "docker is required"
 docker info >/dev/null 2>&1 || fail "docker daemon is not available; start Docker and retry"
 
@@ -43,7 +53,7 @@ noise_pid="$!"
 
 tracked_relative="${tracked_root#"${repo_root}/"}"
 cd "${repo_root}"
-cargo run --locked --quiet --bin ebpf-tracker -- \
+"${tracker_cmd[@]}" \
   --emit raw \
   "/workspace/${tracked_relative}/tracked-parent" \
   -c "exec /workspace/${tracked_relative}/tracked-child -c 'exec /bin/true'" \

@@ -47,6 +47,21 @@ info() {
   printf 'customer-cli-e2e: %s\n' "$1"
 }
 
+# Resolve before the customer journey changes directory. PATH entries and an
+# explicit --tracker may both be relative to the caller's working directory.
+resolve_executable() {
+  local resolved
+  resolved="$(command -v "$1")" || fail "command not found: $1"
+  [[ -x "${resolved}" && ! -d "${resolved}" ]] || fail "command is not executable: $1"
+  printf '%s/%s\n' "$(cd -- "$(dirname -- "${resolved}")" && pwd)" "$(basename -- "${resolved}")"
+}
+
+show_failure_output() {
+  local file="$1"
+  printf 'customer-cli-e2e: last 40 lines of %s:\n' "$(basename -- "${file}")" >&2
+  tail -n 40 "${file}" >&2
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tracker)
@@ -78,18 +93,18 @@ done
 command -v docker >/dev/null 2>&1 || require_or_skip "docker is required"
 docker info >/dev/null 2>&1 || require_or_skip "docker daemon is not available; start Docker and retry"
 command -v cargo >/dev/null 2>&1 || require_or_skip "cargo is required"
-[[ -x /bin/true ]] || require_or_skip "/bin/true is required"
+# /bin/true is executed inside the Linux runtime, not on the host.
+cargo_cmd="$(resolve_executable cargo)"
 
 tracker_cmd=()
 if [[ -n "${tracker_override}" ]]; then
-  tracker_cmd=("${tracker_override}")
+  tracker_cmd=("$(resolve_executable "${tracker_override}")")
 elif command -v ebpf-tracker >/dev/null 2>&1; then
-  tracker_cmd=("ebpf-tracker")
+  tracker_cmd=("$(resolve_executable ebpf-tracker)")
 elif [[ -x "${repo_root}/target/debug/ebpf-tracker" ]]; then
   tracker_cmd=("${repo_root}/target/debug/ebpf-tracker")
 else
-  command -v cargo >/dev/null 2>&1 || require_or_skip "cargo is required to build ebpf-tracker fallback command"
-  tracker_cmd=("cargo" "run" "--locked" "--quiet" "--bin" "ebpf-tracker" "--")
+  tracker_cmd=("${cargo_cmd}" "run" "--manifest-path" "${repo_root}/Cargo.toml" "--locked" "--quiet" "--bin" "ebpf-tracker" "--")
 fi
 
 tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/ebpf-tracker-customer-cli-e2e.XXXXXX")"
@@ -123,6 +138,7 @@ info "using tracker command: ${tracker_cmd[*]}"
 
 info "journey 1/2: first run (ebpf-tracker /bin/true)"
 if ! run_tracker /bin/true >"${first_run_output}" 2>&1; then
+  show_failure_output "${first_run_output}"
   fail "first-run command failed"
 fi
 
@@ -131,12 +147,13 @@ assert_has_trace_signal "${first_run_output}"
 info "first-run path passed"
 
 info "preparing a real Rust app to represent customer workload"
-cargo init --name customer_rust_app --bin "${app_dir}" >/dev/null
+"${cargo_cmd}" init --name customer_rust_app --bin "${app_dir}" >/dev/null
 
 info "journey 2/2: trace your app (cargo run in a real project)"
 (
   cd "${app_dir}"
   if ! run_tracker --emit jsonl --log-enable cargo run >"${trace_jsonl}" 2>"${trace_stderr}"; then
+    show_failure_output "${trace_stderr}"
     fail "trace-your-app command failed"
   fi
 )

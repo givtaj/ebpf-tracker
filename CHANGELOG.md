@@ -4,8 +4,27 @@ This file tracks notable repo changes in progress on this branch.
 
 ## Unreleased
 
+## v0.2.0-alpha.1 - 2026-10-26
+
+### Added
+
+- Added `ebpf-tracker replay <file>` to reopen saved JSONL or raw logs from the installed CLI using the bundled viewer, without starting Docker.
+- Added `--version` and `-V` to identify the installed release candidate.
+- Added release-tooling and customer-command resolution regression checks.
+- Added an installed Linux archive gate covering embedded assets, Rust and Node capture, and offline replay before publication.
+
+### Fixed
+
+- Fixed customer CLI validation resolving the tracker from a temporary application's Cargo manifest after changing directories; failures now include bounded diagnostics.
+- Accepted explicit alpha, beta, and release-candidate tags and marked them as GitHub prereleases.
+- Pinned release customer checks to the freshly built candidate and made archive verification compatible with macOS Bash.
+- Preserve the wrapped workload's exit status when bpftrace reports its own successful completion.
+
 ### Changed
 
+- Focused the alpha on trusted Rust/Node command tracing, JSONL capture, and local replay. Deferred new cloud-attach, monitoring, perf, AI, dataset, and OTLP feature work.
+- Made the sample config enable all four supported probes and clarified host Node requirements and syscall-attempt limitations.
+- Added strict Linux release validation on pull requests and a manual release-workflow path that builds verified archives without publishing.
 - Added a persisted Rust `CARGO_HOME` cache to the managed tracing runtime and documented the build-first direct-binary workflow for app-level Rust traces.
 
 ## v0.1.1 - 2026-09-27

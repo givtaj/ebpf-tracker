@@ -68,8 +68,8 @@ configure; use only endpoints you trust and understand.
 
 ## Reporting A Vulnerability
 
-Use GitHub private vulnerability reporting from the repository's **Security**
-tab when it is available. Include the affected version or commit, impact,
+Use [GitHub private vulnerability reporting](https://github.com/givtaj/ebpf-tracker/security/advisories/new)
+from the repository's **Security** tab (enabled for this alpha). Include the affected version or commit, impact,
 reproduction steps, and a minimal proof of concept.
 
 Do not open a public issue or discussion containing exploit details, secrets,

@@ -12,11 +12,20 @@ This file tracks user-requested work and delegated agent tasks in progress on th
 
 ## Active
 
+### Focused Alpha Release
+
+- 2026-10-26 | Task: Prepare a focused alpha release around a supported development workflow and verify current release readiness | Owner: Codex | Status: running; Linux CI and publication pending | Verification: local release gate passed, 130 workspace tests plus helper quoting test, 11 exit-status regressions, 4 command-resolution regressions, viewer/replay and dataset smoke passed; private vulnerability reporting enabled | Output: `docs/alpha-scope.md`, release preparation and gates
+- 2026-10-26 | Task: Audit and repair release tooling, packaging, versioning, and validation blockers | Agent: alpha-release-audit | Status: completed | Output: prerelease workflow, version checks, archive regression checks
+- 2026-10-26 | Task: Review the product surface and implement installed replay and version discovery for the focused alpha | Agent: alpha-scope-audit | Status: completed | Output: root replay/version commands, unit/integration tests, offline replay smoke
+- 2026-10-26 | Task: Repair customer CLI command resolution and strengthen live alpha acceptance | Agent: alpha-ci-fix | Status: completed | Output: command-resolution regression checks; JSONL, four-probe demo, and exit-status gates; live verification pending Linux CI
+- 2026-10-26 | Task: Preserve the wrapped workload exit status through bpftrace collection | Agent: alpha-runtime-exit | Status: completed | Output: supervised status handoff; 11 wrapper regressions and quoting unit test passed; live Linux gate pending
+- 2026-10-26 | Task: Verify packaged Linux binaries without the build checkout, including embedded assets and Node tracing | Agent: alpha-release-audit | Status: implemented; live verification pending release workflow | Output: installed alpha gate in release asset assembly
+
 ### Platform Attach And Cloud Targets
 
-- 2026-03-25 | Task: Follow up with an `inspektor-gadget` attach backend implementation for Kubernetes and AWS EKS targets | Owner: Codex | Status: planned | Output: pending
-- 2026-03-25 | Task: Follow up with a `tetragon` attach backend implementation for long-running Kubernetes and AWS EKS targets | Owner: Codex | Status: planned | Output: pending
-- 2026-03-25 | Task: Evaluate and scope `aws-ecs` attach support for EC2 launch type after the EKS path is stable | Owner: Codex | Status: planned | Output: pending
+- 2026-03-25 | Task: Follow up with an `inspektor-gadget` attach backend implementation for Kubernetes and AWS EKS targets | Owner: Codex | Status: deferred during focused alpha | Output: `docs/alpha-scope.md`
+- 2026-03-25 | Task: Follow up with a `tetragon` attach backend implementation for long-running Kubernetes and AWS EKS targets | Owner: Codex | Status: deferred during focused alpha | Output: `docs/alpha-scope.md`
+- 2026-03-25 | Task: Evaluate and scope `aws-ecs` attach support for EC2 launch type after the EKS path is stable | Owner: Codex | Status: deferred during focused alpha | Output: `docs/alpha-scope.md`
 
 ## Completed
 

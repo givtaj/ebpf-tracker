@@ -3,6 +3,8 @@
 `ebpf-tracker` is an experimental alpha for trusted Rust and Node.js development
 workflows. The most mature behavior is local command-session tracing and
 replay. It is not a production agent, security sandbox, or full profiler.
+The `0.2.0-alpha.1` candidate focuses on the [capture-and-replay workflow](./alpha-scope.md).
+Other commands remain experimental and outside the alpha feature-development scope.
 
 ## Requirements And Compatibility
 
@@ -14,7 +16,11 @@ For live run/demo tracing you need:
 - `pkg-config` plus OpenSSL development headers for Linux source builds
   (`pkg-config` and `libssl-dev` on Debian/Ubuntu).
 
-Node.js on the host is needed for clone-local viewer/frontend workflows. The
+Bundled Rust demos also run their Cargo cleanup step on the host, so those
+demos require host Cargo even with a downloaded CLI binary.
+
+Node.js on the host is needed for all dashboard and replay workflows, including
+the installed binary. Offline replay needs neither Docker nor an eBPF host. The
 traced workload itself runs in a bundled Debian Bookworm image:
 
 | Runtime selection | Image family | Auto-selected commands |
@@ -62,11 +68,21 @@ Runtime assets are materialized under `~/.cache/ebpf-tracker` by default. Set
 
 ## Golden Workflow
 
-From a clone, use the bundled demo first:
+Use the bundled demo first, including from an installed binary:
 
 ```bash
-cargo demo --emit jsonl session-io-demo > /tmp/ebpf-tracker-demo.jsonl
+ebpf-tracker demo --emit jsonl session-io-demo > trace.jsonl
+ebpf-tracker replay trace.jsonl
 ```
+
+From a source checkout, `cargo demo --emit jsonl session-io-demo` is equivalent
+to the capture command. The demo config enables all four probes. For another
+project, copy `ebpf-tracker.toml.example` to `ebpf-tracker.toml` and pass
+`--config ebpf-tracker.toml`; without a config only `execve` is enabled.
+
+`ebpf-tracker replay --help` lists replay controls. `ebpf-tracker --version`
+identifies the installed candidate. Replay uses the viewer embedded in that
+same binary and does not start a new trace.
 
 The first run may build/pull the Docker image. Cargo and application output
 remain on `stderr`; valid `StreamRecord` JSON lines go to the file. Expect a

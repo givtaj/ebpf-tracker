@@ -1,8 +1,8 @@
 [probe]
 exec = true
 write = true
-open = false
-connect = false
+open = true
+connect = true
 
 [runtime]
 # Optional Docker runtime limits for the wrapped Linux container.
