@@ -19,6 +19,7 @@ This file tracks notable repo changes in progress on this branch.
 - Accepted explicit alpha, beta, and release-candidate tags and marked them as GitHub prereleases.
 - Pinned release customer checks to the freshly built candidate and made archive verification compatible with macOS Bash.
 - Preserve the wrapped workload's exit status when bpftrace reports its own successful completion.
+- Wait for both viewer HTTP readiness and launcher readiness logs in customer checks, avoiding a race on fast-starting viewers.
 
 ### Changed
 
