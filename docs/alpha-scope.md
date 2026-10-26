@@ -1,78 +1,83 @@
-# Focused Alpha
+# Axum On Docker Alpha
 
-Candidate: `0.2.0-alpha.1`. This is a development scope and acceptance contract;
-publication status is recorded in [RELEASE.md](../RELEASE.md).
+Candidate: `0.2.0-alpha.1`, unpublished. The target is a Rust Axum API running
+in Linux Docker, with Roots as the reference application. The generic tracing
+and replay work is a foundation; it does not establish Axum-container acceptance.
 
-## Product Promise
+## Product Outcome
 
-Run one trusted development command in the managed Linux Docker runtime,
-inspect selected syscall activity from that command and its descendants,
-and reopen the saved trace locally.
+Inspect one development API service during a bounded test session, save its
+process and I/O observations, and replay the capture locally. Use this to
+investigate startup/database connectivity and activity around a controlled set
+of HTTP requests.
 
-The intended user is a developer investigating or explaining a Rust or Node.js
-command on an isolated development machine. The first workflow is the bundled
-`session-io-demo`; the second is one command from the user's own project.
+The alpha should select one container unambiguously, keep unrelated container
+activity out of the capture, and finish capture without disrupting the API or
+its database. Collect process and syscall metadata, not HTTP bodies, cookies,
+credentials, or database contents.
 
-## Included
+## Reference Application
 
-- `bpftrace` collection on an eBPF-capable Linux Docker host.
-- Rust and Node.js commands compatible with the bundled Bookworm images.
-- `execve`, `openat`, `write`, and `connect` probes, enabled explicitly by config
-  when all four are needed; the no-config default remains `execve` only.
-- Workload and descendant filtering, application exit status, JSONL capture,
-  and saved logs.
-- Local dashboard and offline `ebpf-tracker replay <file>` using host Node.js.
-- One CLI binary, version identification, source installation, and verified
-  Linux x86_64 / Intel macOS archives. The macOS binary is a launcher; live
-  tracing still depends on its Linux Docker VM and is compatibility-dependent.
+The Roots source inspected on 2026-10-26 uses Axum 0.8 and Tokio. Its
+`roots-dev-api` Compose service runs a prebuilt `roots-api` binary as a non-root
+user in Debian Bookworm, listens on container port 4301, and connects to the
+separate PostgreSQL service on port 4302. `/api/health` checks database access;
+`/api/hello` provides a small public HTTP request. The API handles SIGINT and
+SIGTERM with a bounded graceful shutdown.
 
-## Deferred Work
+This was a source inspection of a working checkout with unrelated changes,
+not a running-system test. No Roots code, configuration, credentials, database,
+or service was changed.
 
-Cloud and Kubernetes attachment, ECS/EKS expansion, host monitoring, the `perf`
-transport, AI explanations, dataset analysis, and OTLP integration receive no
-new feature work during this alpha. Existing commands remain experimental.
-Windows, Apple Silicon binary archives, always-on collection, production
-deployment, and a stable event API are outside this release contract.
+## Integration Decision
 
-## What The Trace Means
+Recommended: record the existing API container, preserving its application
+image, environment, network, and lifecycle. The alternative is launching a
+separate disposable API under the tracker. The user has been asked to choose;
+container integration implementation and publication await that decision.
 
-Events record syscall entry, not successful completion. Write counts are
-requested bytes, not throughput. Connection events identify the process and
-file descriptor, not the destination. Process events do not supply a complete
-command line. Timestamps reflect receipt by the parser, not precise kernel
-timing. File paths containing whitespace have parser limitations.
+The current `attach docker` path only prints a scaffold plan. It is not a
+working recording command. Managed `run` starts its own privileged container;
+it does not automatically reuse Roots's network, environment, or port mappings.
 
-This is a selective session recorder. It does not establish a complete audit
-trail, detect threats, profile CPU time, or isolate untrusted code. Live tracing
-uses a privileged container, the host PID namespace, and a writable project
-mount; the [security boundary](../SECURITY.md) remains part of the contract.
+## Acceptance Required Before Publication
 
-## Acceptance Before Publication
+- Identify the chosen API container and reject missing, ambiguous, stopped,
+  or unsupported targets without observing another workload.
+- Record a bounded session while a disposable Axum/PostgreSQL fixture serves
+  health and greeting requests; retain real application response assertions.
+- Observe relevant API activity with evidence sufficient for the advertised
+  use case. The current four probes alone may miss steady-state Axum requests
+  using pooled connections and vectored I/O.
+- Exclude concurrent activity from an unrelated container.
+- Stop recording without stopping or restarting the API/PostgreSQL services;
+  produce valid JSONL and replay the saved records with Docker unavailable.
+- Verify the selected workflow against an isolated Roots test instance with
+  synthetic data before claiming Roots compatibility.
+- Pass the strict Linux gate, both archive builds, installed Linux checks, and
+  checksum validation on the exact release source. Publish as a prerelease.
 
-1. The candidate identifies its version and exposes useful help from a clean
-   installation outside the checkout.
-2. The installed demo emits valid JSONL with process, file, write, and
-   connection events. Application output stays separate.
-3. A trusted user project runs from its own directory, preserves its exit
-   status, and produces a capture that can be reopened.
-4. Descendants are captured and concurrent unrelated host activity is excluded.
-5. The installed binary replays a saved capture without invoking Docker;
-   browser controls and process filtering remain usable.
-6. The strict Linux release gate, both archive builds, archive verification,
-   and checksums pass for the release commit. Existing dataset/customer checks
-   remain regression gates even though those features are deferred.
-7. GitHub marks the version as a prerelease. Notes list prerequisites and
-   limitations; publication must not proceed from skipped or failed gates.
+Axum/container acceptance is **NOT RUN** and container attachment is
+**NOT IMPLEMENTED**. Existing generic command, replay, isolation, and packaging
+checks remain useful regressions; they cannot substitute for these scenarios.
 
-## Next Development Order
+## Evidence Limits
 
-1. Finish and verify installation, capture, and replay for this candidate.
-2. Improve first-run diagnostics and trace readability using feedback from
-   real Rust and Node.js development sessions.
-3. Choose one recurring debugging task from that feedback before adding a
-   new collector, platform, or integration.
+The current events record syscall entry, not successful completion. Write
+counts are requested bytes, not throughput. Connection events contain a file
+descriptor, not a destination. There is no HTTP method, route, request ID,
+request duration, SQL statement, or per-request causal relationship. Timestamps
+reflect parser receipt. File paths containing whitespace have parser limits.
 
-A proposed feature belongs in this alpha only if it helps a developer finish
-the capture-and-replay workflow or fixes its reliability, correctness, or
-security. Keep other ideas in the deferred backlog until this loop is useful
-and repeatable.
+Do not market this alpha as HTTP request tracing, latency profiling, complete
+network visibility, or production monitoring without implementing and testing
+those capabilities. Preserve the [security boundary](../SECURITY.md): privileged
+collection is for trusted workloads on an isolated development host.
+
+## Deferred
+
+Kubernetes, EKS/ECS, serverless/Workers, general host monitoring, Node.js workload
+support as a product focus, perf, AI analysis, datasets, OTLP, and new OS targets
+are deferred. Host Node.js remains a viewer dependency. Existing experimental
+commands remain available, but the next feature work should serve the one
+Axum-on-Docker workflow above.

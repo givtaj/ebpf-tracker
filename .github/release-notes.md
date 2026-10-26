@@ -1,4 +1,11 @@
-This alpha focuses on one workflow: **trace a trusted development command,
+**Draft: not ready for publication.** This candidate is being focused on a
+Linux Docker Axum API, with Roots as the reference application. Docker
+attachment is still a scaffold and Axum/container acceptance has not run.
+The generic commands below describe the implemented foundation, not completed
+Roots compatibility. Resolve the integration choice and pass the acceptance
+contract in `docs/alpha-scope.md` before replacing this draft and publishing.
+
+The implemented foundation can **trace a trusted development command,
 save its activity, and replay the capture locally.**
 
 ```bash
@@ -7,7 +14,7 @@ ebpf-tracker demo --emit jsonl session-io-demo > trace.jsonl
 ebpf-tracker replay trace.jsonl
 ```
 
-For your own Rust or Node.js project, use the sample `ebpf-tracker.toml` config
+For existing command-mode experiments, use the sample `ebpf-tracker.toml` config
 to enable process, file-open, write, and connection probes. Without a config,
 the default records process execution only.
 
@@ -16,7 +23,7 @@ that exposes the needed eBPF features. Use trusted workloads on an isolated
 development machine. Bundled Rust demos require host Cargo for cleanup;
 dashboard and replay require host Node.js. Replay does not start Docker.
 
-Downloads include Linux x86_64 and Intel macOS CLI archives plus `SHA256SUMS`.
+Planned downloads are Linux x86_64 and Intel macOS CLI archives plus `SHA256SUMS`.
 The macOS launcher still requires a compatible Linux Docker VM for tracing.
 Source builds remain available; this release is not published to crates.io.
 

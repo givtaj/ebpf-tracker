@@ -7,9 +7,10 @@ tagged source tree and attached binary archives are the public artifacts.
 ## Current Candidate
 
 `0.2.0-alpha.1` is being prepared around the
-[focused alpha contract](./docs/alpha-scope.md): trusted command tracing,
-JSONL capture, and local replay. It is not published merely because the
-workspace has this version. Runtime gates, both platform archives, and
+[Axum-on-Docker alpha contract](./docs/alpha-scope.md), using Roots as the
+reference service. The container integration decision and Axum-specific
+acceptance are pending; generic command/replay checks do not approve this
+release. It is not published merely because the workspace has this version. Runtime gates, both platform archives, and
 checksums must pass before publication.
 
 ## Versioning

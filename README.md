@@ -1,26 +1,24 @@
 # ebpf-tracker
 
-> **Focused alpha candidate: `0.2.0-alpha.1`.** Trace one trusted development
-> command, inspect its process and I/O activity, and replay the capture locally.
-> Publication depends on the [release gates](./RELEASE.md); this version label
-> alone does not mean a release has been published.
+> **Preparing an Axum-on-Docker alpha: `0.2.0-alpha.1`.** The target is one
+> Rust API service in Linux Docker, using Roots as the reference application.
+> The candidate is unpublished; Docker attachment and Axum-specific acceptance
+> remain open. See the [alpha scope](./docs/alpha-scope.md).
 
-The CLI wraps a command such as `cargo run` or `npm run`, executes it in a
-Linux Docker runtime, and records selected syscall activity for the wrapped
-session. Save the result as JSONL and reopen it in the local browser viewer.
+The existing CLI wraps a trusted development command, runs it in a managed
+Linux Docker runtime, and records selected syscall activity from its process
+tree. It can save JSONL and replay the capture locally. These are the foundations
+for the focused API-container workflow; `attach docker` is currently a scaffold.
 
-The alpha focuses on two uses:
+The intended alpha workflow is to select one API container, record a bounded
+session while exercising test requests, then inspect and replay its activity.
+The integration choice—record an existing container or launch a disposable API
+under the tracker—is pending. The current probes do not provide HTTP route,
+request ID, latency, or per-request attribution.
 
-- **Debug a development run:** see which processes ran and which file opens,
-  writes, and connection attempts the selected probes observed.
-- **Explain or reproduce a run:** save a trace, replay it, and inspect a
-  specific process without rerunning the workload.
-
-Linux Docker with `bpftrace` is the primary tracing target. Rust and Node.js
-commands must work in the bundled runtime images. Cloud attachment, host
-monitoring, `perf`, AI analysis, datasets, and OTLP remain available as
-experimental extras; development of those features is deferred during this
-alpha. See the [alpha scope and acceptance criteria](./docs/alpha-scope.md).
+New cloud-attach, host-monitoring, general Node.js workload, perf, AI, dataset,
+and OTLP feature work is deferred while this Axum workflow is implemented and
+verified. Existing commands remain available for experimentation.
 
 For Rust apps, trace `cargo run` when build and dependency activity is part of
 the session you want to inspect. When the goal is app-only behavior, build the

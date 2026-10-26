@@ -3,7 +3,9 @@
 `ebpf-tracker` is an experimental alpha for trusted Rust and Node.js development
 workflows. The most mature behavior is local command-session tracing and
 replay. It is not a production agent, security sandbox, or full profiler.
-The `0.2.0-alpha.1` candidate focuses on the [capture-and-replay workflow](./alpha-scope.md).
+The `0.2.0-alpha.1` target is the [Axum-on-Docker workflow](./alpha-scope.md).
+Container integration and Axum acceptance remain pending; the commands below
+describe the implemented tracing and replay foundations.
 Other commands remain experimental and outside the alpha feature-development scope.
 
 ## Requirements And Compatibility
