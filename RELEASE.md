@@ -8,9 +8,10 @@ tagged source tree and attached binary archives are the public artifacts.
 
 `0.2.0-alpha.1` is being prepared around the
 [Axum-on-Docker alpha contract](./docs/alpha-scope.md), using Roots as the
-reference service. The container integration decision and Axum-specific
-acceptance are pending; generic command/replay checks do not approve this
-release. It is not published merely because the workspace has this version. Runtime gates, both platform archives, and
+reference service. The selected integration installs the native agent inside
+the API image. The isolated Axum/PostgreSQL acceptance must pass against the
+actual Debian package; generic command/replay checks do not approve this
+release. It is not published merely because the workspace has this version. Runtime gates, the Debian package, both platform archives, and
 checksums must pass before publication.
 
 ## Versioning
@@ -65,10 +66,19 @@ journey fails the release check.
 Optional focused checks remain available for maintainers:
 
 ```bash
+bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runtime
+bash scripts/in-container-smoke.sh \
+  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.1_amd64.deb
 bash scripts/dashboard-smoke.sh --check
 bash scripts/dataset-smoke.sh
 bash scripts/customer-ux-check.sh --strict-prereqs --fail-on-skip
 ```
+
+The first two checks are mandatory for the in-container alpha. Use the matching
+arm64 platform/package when validating a native arm64 development host. The
+runtime package must be built on Bookworm, installed in a clean image without
+Cargo, and pass its live architecture-specific gate. The published runtime
+package is amd64 until another architecture has its own release gate.
 
 Use `bash scripts/customer-data-e2e.sh --analyze-endpoint <url>` to verify the
 dataset path against an external OpenAI-compatible endpoint instead of the
@@ -112,10 +122,12 @@ problem and cut a new patch version if a public tag is already wrong.
 
 ## Artifact Sanity Checks
 
-The workflow requires both of these archives plus `SHA256SUMS`:
+The workflow requires both of these CLI archives, the Bookworm amd64 runtime
+package, and `SHA256SUMS`:
 
 - `x86_64-unknown-linux-gnu`
 - `x86_64-apple-darwin`
+- `ebpf-tracker-runtime_0.2.0~alpha.1_amd64.deb`
 
 Each archive must contain one top-level directory with the executable
 `ebpf-tracker` binary, `LICENSE`, and `README.md`. To validate downloaded or

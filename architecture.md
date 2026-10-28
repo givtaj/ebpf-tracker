@@ -4,6 +4,17 @@
 boundary is a trusted command running in a high-privilege Linux Docker runtime;
 it is not a sandbox or a production fleet agent.
 
+The focused alpha also provides a native `ebpf-tracker-agent` entrypoint inside
+the application's own Bookworm image. It starts bpftrace with a gated helper,
+waits for probe readiness, and launches the non-root application with dropped
+capabilities. Application stdout/stderr remain Docker logs; collector output
+is normalized through `ebpf-tracker-events` into a separate JSONL file. The
+supervisor forwards termination to the app process group, permits bounded
+draining, and preserves the workload exit status. This path has no Docker API
+dependency. The diagram below describes the original host-orchestrated mode.
+See [in-container installation](./docs/in-container.md) for its deployment and
+trust contract.
+
 ```mermaid
 flowchart TB
     user["Trusted developer / operator"]

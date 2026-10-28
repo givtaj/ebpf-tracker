@@ -13,6 +13,7 @@ generated-runtime.override.yml
 examples/**/target/
 examples/**/logs/
 examples/**/Cargo.lock
+!examples/axum-container/Cargo.lock
 examples/**/dist/
 probes/generated-config.bt
 output/

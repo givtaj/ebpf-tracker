@@ -4,6 +4,16 @@ This file tracks notable repo changes in progress on this branch.
 
 ## Unreleased
 
+### Added
+
+- Added a native Linux `ebpf-tracker-agent` entrypoint for an existing Bookworm API image, with non-root workload execution, separate JSONL capture, graceful shutdown, and workload exit-status preservation.
+- Added a Bookworm runtime Debian package, checksum/installation verification, and an isolated Axum/PostgreSQL container acceptance fixture.
+- Added Dockerfile, Compose, and CI installation instructions for the same-container workflow. Roots remains a reference only; no Roots source, configuration, services, or data are changed.
+
+### Changed
+
+- Selected same-container process launching as the alpha integration. Recording follows the API process lifetime; Docker attachment remains outside the supported workflow.
+
 ## v0.2.0-alpha.1 - 2026-10-26
 
 ### Added

@@ -78,7 +78,9 @@ async function main() {
   const port = listener.address().port;
   await new Promise(resolve => listener.close(resolve));
 
-  child = spawn(tracker, ['replay', trace, '--port', String(port), '--interval-ms', '1', '--focus-comm', 'session-io-demo'], {
+  const replayArgs = ['replay', trace, '--port', String(port), '--interval-ms', '1'];
+  if (!traceArg) replayArgs.push('--focus-comm', 'session-io-demo');
+  child = spawn(tracker, replayArgs, {
     cwd: temporary,
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -110,15 +112,15 @@ async function main() {
   assert.ok(result.progress.total > 0, 'replay must contain records');
   if (traceArg) {
     for (const kind of ['open_at', 'connect', 'write']) {
-      assert.ok(result.counters[kind] > 0, `saved demo replay must contain ${kind}`);
+      assert.ok(result.counters[kind] > 0, `saved capture replay must contain ${kind}`);
     }
   } else {
     assert.equal(result.counters.open_at, 2);
     assert.equal(result.counters.connect, 1);
     assert.equal(result.counters.write, 1);
     assert.ok(result.recentEvents.some(event => event.file === 'input/message.txt'));
+    assert.ok(result.topProcesses.every(item => item.comm === 'session-io-demo'), 'focus filter must exclude cargo');
   }
-  assert.ok(result.topProcesses.every(item => item.comm === 'session-io-demo'), 'focus filter must exclude cargo');
   assert.equal(fs.existsSync(dockerMarker), false, 'offline replay must never invoke Docker');
   if (requireEmbedded === '1') {
     const cache = path.join(temporary, 'cache');
@@ -127,7 +129,7 @@ async function main() {
     assert.ok(fs.statSync(path.join(cache, viewerRoots[0], 'live-trace-matrix.js')).isFile());
     console.log('[replay-smoke] verified embedded viewer assets from the installed binary');
   }
-  console.log('[replay-smoke] PASS: root CLI replay, external directory, saved records, focus filter, no Docker');
+  console.log('[replay-smoke] PASS: root CLI replay, external directory, saved records, no Docker');
 }
 
 main().catch(error => {

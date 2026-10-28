@@ -2,19 +2,26 @@
 
 > **Preparing an Axum-on-Docker alpha: `0.2.0-alpha.1`.** The target is one
 > Rust API service in Linux Docker, using Roots as the reference application.
-> The candidate is unpublished; Docker attachment and Axum-specific acceptance
-> remain open. See the [alpha scope](./docs/alpha-scope.md).
+> The candidate is unpublished. The selected integration installs a tracing
+> agent inside the API's existing image. See the [installation guide](./docs/in-container.md)
+> and [alpha scope](./docs/alpha-scope.md).
 
-The existing CLI wraps a trusted development command, runs it in a managed
-Linux Docker runtime, and records selected syscall activity from its process
-tree. It can save JSONL and replay the capture locally. These are the foundations
-for the focused API-container workflow; `attach docker` is currently a scaffold.
+The in-container `ebpf-tracker-agent` starts your API, records selected syscall
+activity from its process tree, and writes replayable JSONL. Install the
+Bookworm runtime package, set the agent as the entrypoint, and enable the
+tracing Compose override. Your API keeps its image's libraries, network,
+environment, ports, and database connections. The collector runs as root;
+the agent starts the API as its existing non-root user with capabilities dropped.
 
-The intended alpha workflow is to select one API container, record a bounded
-session while exercising test requests, then inspect and replay its activity.
-The integration choice—record an existing container or launch a disposable API
-under the tracker—is pending. The current probes do not provide HTTP route,
-request ID, latency, or per-request attribution.
+The alpha records one API process lifetime during a bounded development or CI
+test session, then saves its capture for local replay. Stopping the traced
+container stops the API and flushes the capture. The current probes do not
+provide HTTP route, request ID, latency, or per-request attribution. The example
+uses a separate synthetic Axum/PostgreSQL stack; Roots itself is unchanged.
+
+The existing host `ebpf-tracker` CLI also wraps commands in its own managed
+Docker runtime and provides offline replay. `attach docker` remains a scaffold;
+it is not used by the in-container integration.
 
 New cloud-attach, host-monitoring, general Node.js workload, perf, AI, dataset,
 and OTLP feature work is deferred while this Axum workflow is implemented and
@@ -29,7 +36,7 @@ host or inside a compatible container.
 
 ## Read This Before Running It
 
-The local tracing runtime currently starts a **privileged** container, joins
+The host CLI's managed runtime starts a **privileged** container, joins
 the Docker host's **PID namespace**, and mounts the selected project
 **read-write** at `/workspace`. Consequently:
 
@@ -51,6 +58,21 @@ the full trust and data boundary.
 
 ## Golden Workflow
 
+For the focused API-container workflow, follow the
+[Dockerfile, Compose, and CI installation guide](./docs/in-container.md).
+Build the runtime package and run its isolated live acceptance example:
+
+```bash
+bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runtime
+bash scripts/in-container-smoke.sh \
+  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.1_amd64.deb
+```
+
+For a native arm64 Docker engine, use `linux/arm64` and the `_arm64.deb` package.
+Both paths require compatible Linux kernel tracing facilities. See the
+[alpha scope](./docs/alpha-scope.md) for the current verification evidence.
+
+The original command-tracing and replay workflow is also available.
 Build the candidate from this checkout:
 
 ```bash
@@ -109,7 +131,8 @@ ebpf-tracker demo --dashboard session-io-demo
 
 ## Current Scope
 
-The useful path is deliberately narrow:
+The focused alpha supports the in-container Bookworm package described above.
+The original command-mode behavior remains available:
 
 - **Workloads:** trusted Rust and Node.js projects whose commands work in the
   bundled Debian Bookworm runtime images (`rust:1-bookworm` and
@@ -154,6 +177,8 @@ the [CLI guide](./docs/cli.md#attach-mode-experimental).
 
 ## Workspace Map
 
+- **`ebpf-tracker-agent`**: native Linux in-container supervisor, privilege
+  dropping, scoped bpftrace capture, and JSONL output; packaged as a Bookworm `.deb`.
 - **Root CLI (`ebpf-tracker`)**: runtime orchestration, terminal `monitor`,
   config loading, demos, dashboard launch, and experimental attach.
 - **[`ebpf-tracker-events`](./crates/ebpf-tracker-events/README.md)**: shared

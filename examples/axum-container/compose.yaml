@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_USER: fixture
+      POSTGRES_PASSWORD: fixture-only-password
+      POSTGRES_DB: fixture
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fixture -d fixture"]
+      interval: 1s
+      timeout: 3s
+      retries: 40
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  app:
+    image: ${FIXTURE_IMAGE:?set FIXTURE_IMAGE}
+    build:
+      context: ${FIXTURE_CONTEXT:?set FIXTURE_CONTEXT}
+    privileged: true
+    pid: host
+    environment:
+      DATABASE_URL: postgresql://fixture:fixture-only-password@postgres:5432/fixture
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1::8080"
+    volumes:
+      - ${FIXTURE_OUTPUT:?set FIXTURE_OUTPUT}/traces:/traces
+      - ${FIXTURE_OUTPUT:?set FIXTURE_OUTPUT}/data:/data
+    stop_grace_period: 20s
+
+  noise:
+    image: debian:bookworm-slim
+    pid: host
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "cp /bin/sh /tmp/outside-noise; while :; do /tmp/outside-noise -c 'printf unrelated > /tmp/unrelated-noise-marker'; sleep 0.05; done"

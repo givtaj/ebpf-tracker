@@ -8,3 +8,9 @@ is_release_version() {
 is_release_tag() {
   [[ "$1" == v* ]] && is_release_version "${1#v}"
 }
+
+debian_release_version() {
+  is_release_version "$1" || return 1
+  # Bash versions differ in whether an unescaped replacement ~ expands HOME.
+  printf '%s\n' "$1" | tr '-' '~'
+}

@@ -1,83 +1,84 @@
-# Axum On Docker Alpha
+# Axum In-Container Alpha
 
-Candidate: `0.2.0-alpha.1`, unpublished. The target is a Rust Axum API running
-in Linux Docker, with Roots as the reference application. The generic tracing
-and replay work is a foundation; it does not establish Axum-container acceptance.
+Candidate: `0.2.0-alpha.1`, unpublished. The selected workflow installs a
+native tracing agent inside an existing Bookworm application image and starts
+the Axum API through that agent. Roots supplied the reference Docker layout;
+no Roots files, services, credentials, or data are changed.
 
 ## Product Outcome
 
-Inspect one development API service during a bounded test session, save its
-process and I/O observations, and replay the capture locally. Use this to
-investigate startup/database connectivity and activity around a controlled set
-of HTTP requests.
+Inspect one trusted development API process tree during a bounded HTTP test
+session, save its syscall observations, and replay the capture locally. The
+API uses its existing environment, Docker network, ports, and PostgreSQL
+connection. A versioned Debian package supplies the agent and declares its
+bpftrace runtime dependencies. The image needs no Rust compiler or Node viewer.
 
-The alpha should select one container unambiguously, keep unrelated container
-activity out of the capture, and finish capture without disrupting the API or
-its database. Collect process and syscall metadata, not HTTP bodies, cookies,
-credentials, or database contents.
+Recording follows the launched API's lifetime. Stopping the traced container
+stops the API gracefully and flushes the capture. This alpha does not attach
+to an already-running API or stop collection independently of the server.
 
-## Reference Application
+## Supported Boundary
 
-The Roots source inspected on 2026-10-26 uses Axum 0.8 and Tokio. Its
-`roots-dev-api` Compose service runs a prebuilt `roots-api` binary as a non-root
-user in Debian Bookworm, listens on container port 4301, and connects to the
-separate PostgreSQL service on port 4302. `/api/health` checks database access;
-`/api/hello` provides a small public HTTP request. The API handles SIGINT and
-SIGTERM with a bounded graceful shutdown.
+- Debian 12 Bookworm runtime images and Bookworm bpftrace 0.17.
+- Linux Docker hosts with working eBPF/tracefs and the documented privileged,
+  host-PID development configuration. The actual kernel support is tested at
+  startup; missing tracing support is an error, not a silently empty capture.
+- An existing non-root application user, with UID/GID/groups and capabilities
+  managed by the launcher. The image's default Docker user remains root for
+  the collector; healthcheck and exec identity must be handled explicitly.
+- Four fixed process-tree probes: `execve`, `openat`, `write`, and `connect`.
+- Application stdout/stderr separate from a newly created JSONL output file.
+- Native package builds for amd64 and arm64. The release workflow gates and
+  publishes amd64; architecture-specific live evidence is required before
+  claiming another architecture as a verified release artifact.
 
-This was a source inspection of a working checkout with unrelated changes,
-not a running-system test. No Roots code, configuration, credentials, database,
-or service was changed.
+Use only trusted workloads on isolated development or disposable CI hosts.
+The privileged container has broad host access. Workload filtering and dropping
+API capabilities are not a security sandbox. See [SECURITY.md](../SECURITY.md).
 
-## Integration Decision
+## Delivery
 
-Recommended: record the existing API container, preserving its application
-image, environment, network, and lifecycle. The alternative is launching a
-separate disposable API under the tracker. The user has been asked to choose;
-container integration implementation and publication await that decision.
-
-The current `attach docker` path only prints a scaffold plan. It is not a
-working recording command. Managed `run` starts its own privileged container;
-it does not automatically reuse Roots's network, environment, or port mappings.
+Follow the [Dockerfile, Compose, and CI installation guide](./in-container.md).
+The repository supplies a standalone synthetic Axum/PostgreSQL example and a
+smoke test that installs the actual runtime package. The existing host CLI
+provides replay. `attach docker` remains a scaffold and is not used here.
 
 ## Acceptance Required Before Publication
 
-- Identify the chosen API container and reject missing, ambiguous, stopped,
-  or unsupported targets without observing another workload.
-- Record a bounded session while a disposable Axum/PostgreSQL fixture serves
-  health and greeting requests; retain real application response assertions.
-- Observe relevant API activity with evidence sufficient for the advertised
-  use case. The current four probes alone may miss steady-state Axum requests
-  using pooled connections and vectored I/O.
-- Exclude concurrent activity from an unrelated container.
-- Stop recording without stopping or restarting the API/PostgreSQL services;
-  produce valid JSONL and replay the saved records with Docker unavailable.
-- Verify the selected workflow against an isolated Roots test instance with
-  synthetic data before claiming Roots compatibility.
-- Pass the strict Linux gate, both archive builds, installed Linux checks, and
-  checksum validation on the exact release source. Publish as a prerelease.
+- Install the real package in a clean Bookworm runtime image with no compiler.
+- Start a separate PostgreSQL service and the instrumented Axum API; assert
+  health and a controlled route through HTTP against that actual container.
+- Verify the app's non-root identity, cleared capabilities, and no_new_privs.
+- Capture app-specific file/write/connection activity and all four event kinds;
+  exclude concurrent activity from an unrelated process/container.
+- Keep API stdout/stderr out of the normalized JSONL, preserving Docker logs.
+- Forward SIGTERM, let the app finish its shutdown work, flush capture, and
+  preserve ordinary failure status (including exit 23).
+- Reject missing commands, missing tracing privileges, and existing output
+  files. Collector failure must not leave an untraced workload running.
+- Pass workspace regression checks, offline replay, and the strict Linux
+  release gates; verify runtime package metadata, architecture, and checksums.
 
-Axum/container acceptance is **NOT RUN** and container attachment is
-**NOT IMPLEMENTED**. Existing generic command, replay, isolation, and packaging
-checks remain useful regressions; they cannot substitute for these scenarios.
+Current evidence is recorded in [alpha validation](./alpha-validation.md) and TASKLOG.md.
+A fixture passing does not establish real Roots acceptance or HTTP request
+tracing. Roots application integration remains a separate opt-in task.
 
 ## Evidence Limits
 
-The current events record syscall entry, not successful completion. Write
-counts are requested bytes, not throughput. Connection events contain a file
-descriptor, not a destination. There is no HTTP method, route, request ID,
-request duration, SQL statement, or per-request causal relationship. Timestamps
-reflect parser receipt. File paths containing whitespace have parser limits.
+Events record syscall entry, not successful completion. Write counts are
+requested bytes, not throughput. Connections contain a file descriptor, not a
+destination. There is no HTTP method, route, request ID, duration, SQL statement,
+or per-request causal relationship. Timestamps reflect parser receipt; long
+or whitespace-containing paths retain shared parser limits. Async workloads
+may use pooled connections or other syscalls outside these four probes.
 
-Do not market this alpha as HTTP request tracing, latency profiling, complete
-network visibility, or production monitoring without implementing and testing
-those capabilities. Preserve the [security boundary](../SECURITY.md): privileged
-collection is for trusted workloads on an isolated development host.
+Do not market this alpha as complete network visibility, request tracing,
+latency profiling, production monitoring, or a least-privilege integration.
 
 ## Deferred
 
-Kubernetes, EKS/ECS, serverless/Workers, general host monitoring, Node.js workload
-support as a product focus, perf, AI analysis, datasets, OTLP, and new OS targets
-are deferred. Host Node.js remains a viewer dependency. Existing experimental
-commands remain available, but the next feature work should serve the one
-Axum-on-Docker workflow above.
+Existing-container attachment, arbitrary base distributions, production and
+shared-host deployment, private PID namespaces, Kubernetes, EKS/ECS,
+serverless/Workers, general host monitoring, AI analysis, and new transports
+are deferred. Existing experimental CLI paths remain available but do not
+expand the alpha contract.

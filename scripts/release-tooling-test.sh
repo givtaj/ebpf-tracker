@@ -14,9 +14,18 @@ for version in 0.1.1 1.2.3 0.2.0-alpha.1 1.0.0-beta.2 2.0.0-rc.0; do
   is_release_tag "v${version}" || fail "rejected supported tag v${version}"
 done
 
+for pair in '0.1.1 0.1.1' '0.2.0-alpha.1 0.2.0~alpha.1' '1.0.0-beta.2 1.0.0~beta.2' '2.0.0-rc.0 2.0.0~rc.0'; do
+  version="${pair%% *}"
+  expected="${pair#* }"
+  [[ "$(debian_release_version "${version}")" == "${expected}" ]] || fail "incorrect Debian version for ${version}"
+done
+
 for version in '' v0.1.1 01.2.3 1.02.3 1.2.03 1.2 1.2.3-alpha 1.2.3-alpha.01 1.2.3-preview.1 1.2.3-rc.1.2 1.2.3+build; do
   if is_release_version "${version}"; then
     fail "accepted unsupported version ${version}"
+  fi
+  if debian_release_version "${version}" >/dev/null; then
+    fail "converted unsupported Debian version ${version}"
   fi
 done
 
@@ -63,4 +72,4 @@ if bash "${script_dir}/release-check.sh" --expected-version 0.2.0-alpha.01 > "${
 fi
 grep -q 'expected version must be' "${tmp_root}/output" || fail "release gate failed for an unexpected reason"
 
-printf '[release-tooling-test] PASS: versions, complete platform sets, executable binaries, and archive contents\n'
+printf '[release-tooling-test] PASS: release/Debian versions, complete platform sets, executable binaries, and archive contents\n'

@@ -33,6 +33,66 @@ jobs:
       - name: Build
         run: cargo build --workspace --locked
 
+      - name: Check standalone Axum fixture formatting
+        run: cargo fmt --manifest-path examples/axum-container/Cargo.toml --check
+
+  in-container-alpha:
+    name: Bookworm runtime package and Axum/PostgreSQL acceptance
+    runs-on: ubuntu-latest
+    needs: test
+    if: ${{ github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build real Bookworm runtime package
+        run: bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runtime
+
+      - name: Run installed-package container acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          packages=(dist/runtime/ebpf-tracker-runtime_*_amd64.deb)
+          [[ "${#packages[@]}" -eq 1 && -f "${packages[0]}" ]]
+          bash scripts/in-container-smoke.sh --package "${packages[0]}" --output-dir target/in-container-evidence
+
+      - name: Install Rust for the replay CLI
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node for offline replay
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Replay the actual API capture without Docker
+        run: |
+          cargo build --locked --bin ebpf-tracker
+          bash scripts/replay-smoke.sh --tracker target/debug/ebpf-tracker --trace target/in-container-evidence/events.jsonl
+
+      - name: Preserve container acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: in-container-alpha-evidence
+          path: target/in-container-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload validated runtime candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: runtime-candidate-amd64
+          path: |
+            dist/runtime/*.deb
+            dist/runtime/SHA256SUMS.runtime
+          if-no-files-found: error
+          retention-days: 7
+
   smoke:
     runs-on: ubuntu-latest
     needs: test

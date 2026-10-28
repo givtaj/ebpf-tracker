@@ -122,6 +122,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ebpf-tracker-agent"
+version = "0.2.0-alpha.1"
+dependencies = [
+ "ebpf-tracker-events",
+ "libc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ebpf-tracker-dataset"
 version = "0.2.0-alpha.1"
 dependencies = [
