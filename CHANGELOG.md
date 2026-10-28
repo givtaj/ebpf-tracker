@@ -4,6 +4,12 @@ This file tracks notable repo changes in progress on this branch.
 
 ## Unreleased
 
+## v0.2.0-alpha.2 - 2026-10-28
+
+### Fixed
+
+- Clean up root-owned files from the installed-archive acceptance fixture without changing application captures or swallowing failures. The alpha.1 tag passed its product checks but publication was withheld when fixture cleanup failed; the tag remains unchanged.
+
 ## v0.2.0-alpha.1 - 2026-10-28
 
 ### Added

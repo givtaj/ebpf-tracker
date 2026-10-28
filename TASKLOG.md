@@ -14,6 +14,8 @@ This file tracks user-requested work and delegated agent tasks in progress on th
 
 ### Focused Alpha Release
 
+- 2026-10-28 | Task: Repair installed-archive fixture cleanup after successful acceptance, and publish a fresh alpha.2 tag without rewriting alpha.1 | Agent: alpha-release-audit | Status: implemented; six real Linux ownership/exit-status cases passed; alpha.2 CI and publication pending | Output: `scripts/installed-alpha-smoke.sh`, release workflow validation
+
 - 2026-10-28 | Task: Deliver the authorized same-container Axum tracing alpha: native launcher, Bookworm package, Docker/CI recipe, and isolated live acceptance; leave Roots unchanged | Owner: Codex | Status: implementation verified; native amd64 CI 40717437051 and local arm64 live acceptance/replay passed; tagged asset assembly and publication pending | Output: `docs/in-container.md`, `docs/alpha-validation.md`, package and fixture
 - 2026-10-28 | Task: Implement the native Linux tracing launcher with privilege dropping, signal forwarding, exit status, and JSONL output | Agent: alpha-scope-audit | Status: completed; removed diagnostics; known-bad kernel rejected before launch; two kernel guard tests passed | Output: `crates/ebpf-tracker-agent/`
 - 2026-10-28 | Task: Build the Bookworm runtime Debian package and integrate verified release assets | Agent: alpha-release-audit | Status: completed; arm64 package installed; final workflow review passed; downloaded-checksum guidance corrected | Output: package build scripts, Docker builder, release workflow

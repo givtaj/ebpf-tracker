@@ -16,7 +16,7 @@ then run the test (use `linux/arm64` and `_arm64.deb` on an ARM64 Docker host):
 ```bash
 bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runtime
 bash scripts/in-container-smoke.sh \
-  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.1_amd64.deb \
+  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb \
   --output-dir target/in-container-evidence
 ```
 

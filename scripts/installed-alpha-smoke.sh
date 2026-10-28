@@ -38,7 +38,21 @@ done
 docker info >/dev/null 2>&1 || fail 'Docker daemon is unavailable'
 
 tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/ebpf-tracker-installed-alpha.XXXXXX")"
-trap 'rm -rf "${tmp_root}"' EXIT INT TERM
+cleanup() {
+  local status="$?"
+  trap - EXIT INT TERM
+  if ! rm -rf -- "${tmp_root}"; then
+    printf 'installed-alpha-smoke: failed to remove temporary fixture: %s\n' "${tmp_root}" >&2
+    if [[ "${status}" -eq 0 ]]; then status=1; fi
+  fi
+  if [[ "${status}" -eq 0 ]]; then
+    printf '[installed-alpha-smoke] PASS: Linux archive, embedded demo/runtime/viewer, Rust and Node capture, offline replay, cleanup\n'
+  fi
+  exit "${status}"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 mkdir -p "${tmp_root}/install" "${tmp_root}/work" "${tmp_root}/node-app"
 tar -xzf "${archive}" -C "${tmp_root}/install"
 tracker="${tmp_root}/install/${archive_root}/ebpf-tracker"
@@ -65,6 +79,9 @@ cd "${tmp_root}/work"
 "${tracker}" demo --list > "${tmp_root}/demos.txt"
 grep -Fxq session-io-demo "${tmp_root}/demos.txt" || fail 'installed demo discovery failed'
 [[ -f "${EBPF_TRACKER_CACHE_DIR}/demo-workspace-v${expected_version}/examples/session-io-demo/Cargo.toml" ]] || fail 'demo did not materialize embedded assets'
+# Keep the fixture's output directory owned by this process. The container runs
+# as root; root-owned files remain removable from a host-owned writable parent.
+mkdir -p "${EBPF_TRACKER_CACHE_DIR}/demo-workspace-v${expected_version}/examples/session-io-demo/logs"
 run_capture rust-demo "${tmp_root}/rust.jsonl" "${tracker}" demo --emit jsonl session-io-demo
 [[ -f "${EBPF_TRACKER_CACHE_DIR}/runtime-v${expected_version}/docker-compose.bpftrace.yml" ]] || fail 'capture did not materialize embedded runtime assets'
 
@@ -103,4 +120,3 @@ for source, filename in zip(('rust', 'node'), sys.argv[1:]):
 PY
 
 bash "${script_dir}/replay-smoke.sh" --tracker "${tracker}" --trace "${tmp_root}/rust.jsonl" --require-embedded
-printf '[installed-alpha-smoke] PASS: Linux archive, embedded demo/runtime/viewer, Rust and Node capture, offline replay\n'

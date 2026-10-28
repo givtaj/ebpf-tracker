@@ -6,7 +6,7 @@ tagged source tree and attached binary archives are the public artifacts.
 
 ## Release Line
 
-`0.2.0-alpha.1` follows the
+`0.2.0-alpha.2` follows the
 [Axum-on-Docker alpha contract](./docs/alpha-scope.md), using Roots as the
 reference service. The selected integration installs the native agent inside
 the API image. The isolated Axum/PostgreSQL acceptance must pass against the
@@ -18,7 +18,7 @@ checksums must pass before publication.
 
 - Keep the workspace version in [Cargo.toml](./Cargo.toml) on the release line.
 - Use annotated `vMAJOR.MINOR.PATCH` tags, or prereleases such as
-  `v0.2.0-alpha.1`. Supported prerelease channels are `alpha.N`, `beta.N`, and
+  `v0.2.0-alpha.2`. Supported prerelease channels are `alpha.N`, `beta.N`, and
   `rc.N`, with no leading zeroes in numeric components.
 - Prerelease tags are marked as prereleases on GitHub; do not promote an alpha
   to a stable release.
@@ -50,14 +50,14 @@ loopback interface:
 
 ```bash
 bash scripts/release-check.sh \
-  --expected-version 0.2.0-alpha.1 \
+  --expected-version 0.2.0-alpha.2 \
   --with-runtime-smoke \
   --with-demo-smoke \
   --with-isolation-smoke \
   --with-customer-ux
 ```
 
-Replace `0.2.0-alpha.1` with the version being released. This gate verifies formatting,
+Replace `0.2.0-alpha.2` with the version being released. This gate verifies formatting,
 the locked workspace tests and builds, CLI discovery, a real traced workload,
 descendant capture and unrelated-process exclusion, and all supported customer
 journeys. `--with-customer-ux` is strict: a missing prerequisite or skipped
@@ -68,7 +68,7 @@ Optional focused checks remain available for maintainers:
 ```bash
 bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runtime
 bash scripts/in-container-smoke.sh \
-  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.1_amd64.deb
+  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb
 bash scripts/dashboard-smoke.sh --check
 bash scripts/dataset-smoke.sh
 bash scripts/customer-ux-check.sh --strict-prereqs --fail-on-skip
@@ -112,7 +112,7 @@ git tag -a vX.Y.Z -m "ebpf-tracker vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
-For this candidate use `v0.2.0-alpha.1` in place of `vX.Y.Z`.
+For this candidate use `v0.2.0-alpha.2` in place of `vX.Y.Z`.
 
 6. Wait for every `release` workflow job to pass: strict validation, both platform builds, asset assembly, and publication.
 7. Verify the release notes, archives, and checksums on the GitHub release page.
@@ -127,7 +127,7 @@ package, and `SHA256SUMS`:
 
 - `x86_64-unknown-linux-gnu`
 - `x86_64-apple-darwin`
-- `ebpf-tracker-runtime_0.2.0~alpha.1_amd64.deb`
+- `ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb`
 
 Each archive must contain one top-level directory with the executable
 `ebpf-tracker` binary, `LICENSE`, and `README.md`. To validate downloaded or
@@ -136,10 +136,10 @@ locally assembled assets without replacing the supplied checksums:
 ```bash
 bash scripts/verify-release-artifacts.sh \
   --dist dist \
-  --tag v0.2.0-alpha.1
+  --tag v0.2.0-alpha.2
 bash scripts/verify-runtime-package.sh \
-  --deb dist/ebpf-tracker-runtime_0.2.0~alpha.1_amd64.deb \
-  --expected-version 0.2.0-alpha.1 --arch amd64
+  --deb dist/ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb \
+  --expected-version 0.2.0-alpha.2 --arch amd64
 (cd dist && sha256sum -c SHA256SUMS)
 ```
 

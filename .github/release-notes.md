@@ -1,7 +1,7 @@
 Trace a trusted Axum API **inside its own Debian Bookworm Docker image**, save
 its process/file/write/connection activity, and replay the JSONL afterward.
 
-The new `ebpf-tracker-runtime_0.2.0~alpha.1_amd64.deb` installs a precompiled
+The new `ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb` installs a precompiled
 `ebpf-tracker-agent` and declares its Bookworm bpftrace dependencies. Use the
 agent as the entrypoint, select your existing non-root application user, and
 apply the development tracing configuration. No Rust compiler, Node viewer,
@@ -19,7 +19,7 @@ CMD ["your-api"]
 ```
 
 Replace `app` with your existing non-root user and `your-api` with your server
-command. Read the [complete Dockerfile/Compose/CI guide](https://github.com/givtaj/ebpf-tracker/blob/v0.2.0-alpha.1/docs/in-container.md)
+command. Read the [complete Dockerfile/Compose/CI guide](https://github.com/givtaj/ebpf-tracker/blob/v0.2.0-alpha.2/docs/in-container.md)
 before running: the first alpha requires a privileged container and host PID
 namespace on an isolated, trusted development or disposable CI host. It is not
 for production, shared runners, or untrusted workloads. Dropping app
@@ -59,6 +59,6 @@ APIs and formats may change during alpha. Cloud attachment, host monitoring,
 perf, AI analysis, datasets, and OTLP remain experimental extras outside this
 focused release.
 
-See the [alpha scope](https://github.com/givtaj/ebpf-tracker/blob/v0.2.0-alpha.1/docs/alpha-scope.md),
-[CLI guide](https://github.com/givtaj/ebpf-tracker/blob/v0.2.0-alpha.1/docs/cli.md),
-and [security policy](https://github.com/givtaj/ebpf-tracker/blob/v0.2.0-alpha.1/SECURITY.md).
+See the [alpha scope](https://github.com/givtaj/ebpf-tracker/blob/v0.2.0-alpha.2/docs/alpha-scope.md),
+[CLI guide](https://github.com/givtaj/ebpf-tracker/blob/v0.2.0-alpha.2/docs/cli.md),
+and [security policy](https://github.com/givtaj/ebpf-tracker/blob/v0.2.0-alpha.2/SECURITY.md).
