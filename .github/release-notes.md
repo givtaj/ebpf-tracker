@@ -1,7 +1,7 @@
 Trace a trusted Axum API **inside its own Debian Bookworm Docker image**, save
 its process/file/write/connection activity, and replay the JSONL afterward.
 
-The new `ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb` installs a precompiled
+The new `ebpf-tracker-runtime_0.2.0-alpha.2_amd64.deb` installs a precompiled
 `ebpf-tracker-agent` and declares its Bookworm bpftrace dependencies. Use the
 agent as the entrypoint, select your existing non-root application user, and
 apply the development tracing configuration. No Rust compiler, Node viewer,
@@ -35,6 +35,9 @@ keeps stdout/stderr in Docker logs, forwards shutdown signals, and preserves
 workload exit status. Each run requires a new output file. Stopping the traced
 container stops the API and flushes its capture; existing-container attachment
 is not part of this integration.
+
+The public `.deb` filename uses `-alpha.2`; its internal Debian package version
+uses `~alpha.2`. Both identify the same verified runtime.
 
 Downloads include the Bookworm amd64 runtime package, Linux x86_64 and Intel
 macOS host-CLI archives, and `SHA256SUMS`. The host CLI provides offline replay:

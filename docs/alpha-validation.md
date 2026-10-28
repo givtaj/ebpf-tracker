@@ -97,8 +97,29 @@ then passed every validation, build, runtime, installed-archive, cleanup, and
 asset-assembly job. A parallel main run exposed an unrelated fixture race: a
 noise marker snapshot was empty between truncation and rewrite. Both noise
 writers now publish by atomic rename; 4,000 concurrent read assertions passed
-without changing the capture or exclusion requirements. Final main and tag
-gates remain required for publication.
+without changing the capture or exclusion requirements. Final main and tag gates passed as recorded below.
+
+## Published release
+
+[v0.2.0-alpha.2](https://github.com/givtaj/ebpf-tracker/releases/tag/v0.2.0-alpha.2)
+is published as a GitHub prerelease from annotated tag commit
+`b7606456d532cc4f71ba8815a35491a2217d9fee`. Main CI
+[40725691152](https://github.com/givtaj/ebpf-tracker/actions/runs/40725691152)
+and every job in the tagged
+[release run 40726471342](https://github.com/givtaj/ebpf-tracker/actions/runs/40726471342)
+passed, including installed-archive cleanup and publication.
+
+All three public binary assets were downloaded afresh and checked against the
+published `SHA256SUMS`. Both CLI archives also passed structural verification.
+The guide's direct `curl` download URLs and `sha256sum --check --ignore-missing`
+command passed. The runtime package digest is
+`d107b5a22e698b588db56f8a068a56f834dc6667a074d2ba4255cdafd5afc872`.
+
+GitHub rewrites `~` in uploaded filenames. The runtime public filename is now
+`ebpf-tracker-runtime_0.2.0-alpha.2_amd64.deb`; its internal Debian version stays
+`0.2.0~alpha.2`. The public asset name and matching checksum entry were repaired
+without changing any binary bytes. Future release assembly applies this name
+before hashing and upload. The original alpha.1 tag remains unchanged.
 
 ## Release status and limits
 

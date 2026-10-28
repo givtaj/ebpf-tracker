@@ -127,7 +127,7 @@ package, and `SHA256SUMS`:
 
 - `x86_64-unknown-linux-gnu`
 - `x86_64-apple-darwin`
-- `ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb`
+- `ebpf-tracker-runtime_0.2.0-alpha.2_amd64.deb`
 
 Each archive must contain one top-level directory with the executable
 `ebpf-tracker` binary, `LICENSE`, and `README.md`. To validate downloaded or
@@ -138,7 +138,7 @@ bash scripts/verify-release-artifacts.sh \
   --dist dist \
   --tag v0.2.0-alpha.2
 bash scripts/verify-runtime-package.sh \
-  --deb dist/ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb \
+  --deb dist/ebpf-tracker-runtime_0.2.0-alpha.2_amd64.deb \
   --expected-version 0.2.0-alpha.2 --arch amd64
 (cd dist && sha256sum -c SHA256SUMS)
 ```

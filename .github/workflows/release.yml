@@ -252,8 +252,18 @@ jobs:
           source release-source/scripts/release-version.sh
           version="${RELEASE_TAG#v}"
           debian_version="$(debian_release_version "${version}")"
+          local_package="dist/ebpf-tracker-runtime_${debian_version}_amd64.deb"
+          public_package="dist/ebpf-tracker-runtime_${version}_amd64.deb"
           bash release-source/scripts/verify-runtime-package.sh \
-            --deb "dist/ebpf-tracker-runtime_${debian_version}_amd64.deb" \
+            --deb "${local_package}" \
+            --expected-version "${version}" --arch amd64
+          # GitHub rewrites '~' in release asset names. Rename before hashing;
+          # the package bytes and its internal Debian Version stay unchanged.
+          if [[ "${local_package}" != "${public_package}" ]]; then
+            mv "${local_package}" "${public_package}"
+          fi
+          bash release-source/scripts/verify-runtime-package.sh \
+            --deb "${public_package}" \
             --expected-version "${version}" --arch amd64 --write-checksums
           cat dist/SHA256SUMS.runtime >> dist/SHA256SUMS
 

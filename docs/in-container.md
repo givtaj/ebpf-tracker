@@ -40,9 +40,11 @@ bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runti
 (cd dist/runtime && shasum -a 256 -c SHA256SUMS.runtime)
 ```
 
-The current package name is
-`ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb` (or `_arm64.deb`). Debian spells
-the prerelease separator as `~`; the agent prints version `0.2.0-alpha.2`.
+Local source builds produce
+`ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb` (or `_arm64.deb`). The published
+amd64 download is named `ebpf-tracker-runtime_0.2.0-alpha.2_amd64.deb` because
+GitHub rewrites `~` in asset names. Both contain Debian package version
+`0.2.0~alpha.2`; the agent prints `0.2.0-alpha.2`.
 Select the architecture of the **application image**, not the machine running
 your editor. Published package support depends on passing that architecture's
 live acceptance gate; a successful cross-build alone is insufficient.
@@ -56,7 +58,7 @@ mkdir -p vendor
   set -eu
   cd vendor
   release=https://github.com/givtaj/ebpf-tracker/releases/download/v0.2.0-alpha.2
-  package=ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb
+  package=ebpf-tracker-runtime_0.2.0-alpha.2_amd64.deb
   curl --fail --location --output "$package" "$release/$package"
   curl --fail --location --output SHA256SUMS "$release/SHA256SUMS"
   sha256sum --check --ignore-missing SHA256SUMS

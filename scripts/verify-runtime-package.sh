@@ -16,6 +16,8 @@ Usage: bash scripts/verify-runtime-package.sh --deb FILE --expected-version VERS
 Checks package name, version, architecture, dependencies, exact payload, and ELF
 architecture. Requires Debian dpkg-deb, Python 3, and readelf. Does not execute the
 agent or trace the host. --write-checksums writes adjacent SHA256SUMS.runtime.
+Accepts the local Debian-version filename (~) or public SemVer filename (-).
+The package's internal Version must always use the Debian version.
 EOF
 }
 while [[ $# -gt 0 ]]; do
@@ -34,8 +36,10 @@ is_release_version "${version}" || fail "--expected-version must be a supported 
 case "${arch}" in amd64|arm64) ;; *) fail "--arch must be amd64 or arm64" ;; esac
 [[ -s "${package}" ]] || fail "package does not exist or is empty: ${package}"
 debian_version="$(debian_release_version "${version}")"
-package_name="ebpf-tracker-runtime_${debian_version}_${arch}.deb"
-[[ "$(basename -- "${package}")" == "${package_name}" ]] || fail "unexpected package filename"
+local_name="ebpf-tracker-runtime_${debian_version}_${arch}.deb"
+public_name="ebpf-tracker-runtime_${version}_${arch}.deb"
+package_name="$(basename -- "${package}")"
+[[ "${package_name}" == "${local_name}" || "${package_name}" == "${public_name}" ]] || fail "unexpected package filename"
 for tool in dpkg-deb python3 readelf; do command -v "${tool}" >/dev/null 2>&1 || fail "${tool} is required"; done
 [[ "$(dpkg-deb -f "${package}" Package)" == ebpf-tracker-runtime ]] || fail "unexpected Package field"
 [[ "$(dpkg-deb -f "${package}" Version)" == "${debian_version}" ]] || fail "unexpected Version field"
