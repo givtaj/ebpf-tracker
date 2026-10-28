@@ -36,4 +36,4 @@ services:
     pid: host
     entrypoint: ["/bin/sh", "-c"]
     command:
-      - "cp /bin/sh /tmp/outside-noise; while :; do /tmp/outside-noise -c 'printf unrelated > /tmp/unrelated-noise-marker'; sleep 0.05; done"
+      - "cp /bin/sh /tmp/outside-noise; while :; do /tmp/outside-noise -c 'printf unrelated > /tmp/unrelated-noise-marker.next && mv /tmp/unrelated-noise-marker.next /tmp/unrelated-noise-marker'; sleep 0.05; done"

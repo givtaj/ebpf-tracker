@@ -14,7 +14,9 @@ This file tracks user-requested work and delegated agent tasks in progress on th
 
 ### Focused Alpha Release
 
-- 2026-10-28 | Task: Repair installed-archive fixture cleanup after successful acceptance, and publish a fresh alpha.2 tag without rewriting alpha.1 | Agent: alpha-release-audit | Status: implemented; six real Linux ownership/exit-status cases passed; alpha.2 CI and publication pending | Output: `scripts/installed-alpha-smoke.sh`, release workflow validation
+- 2026-10-28 | Task: Make concurrent noise proof atomic after an empty snapshot failed main CI | Agent: alpha-ci-fix | Status: implemented; both atomic writers passed 4,000 concurrent shell read assertions; full CI pending | Output: isolated fixture noise writers
+
+- 2026-10-28 | Task: Repair installed-archive fixture cleanup after successful acceptance, and publish a fresh alpha.2 tag without rewriting alpha.1 | Agent: alpha-release-audit | Status: completed; six Linux ownership/status cases and full non-publishing release workflow 40723398161 passed; publication awaits final noise-proof gates | Output: `scripts/installed-alpha-smoke.sh`, release workflow validation
 
 - 2026-10-28 | Task: Deliver the authorized same-container Axum tracing alpha: native launcher, Bookworm package, Docker/CI recipe, and isolated live acceptance; leave Roots unchanged | Owner: Codex | Status: implementation verified; native amd64 CI 40717437051 and local arm64 live acceptance/replay passed; tagged asset assembly and publication pending | Output: `docs/in-container.md`, `docs/alpha-validation.md`, package and fixture
 - 2026-10-28 | Task: Implement the native Linux tracing launcher with privilege dropping, signal forwarding, exit status, and JSONL output | Agent: alpha-scope-audit | Status: completed; removed diagnostics; known-bad kernel rejected before launch; two kernel guard tests passed | Output: `crates/ebpf-tracker-agent/`
