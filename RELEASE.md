@@ -4,9 +4,9 @@ This is the maintainer checklist for public releases of `ebpf-tracker`.
 Releases are GitHub-first: workspace crates remain `publish = false`, so the
 tagged source tree and attached binary archives are the public artifacts.
 
-## Current Candidate
+## Release Line
 
-`0.2.0-alpha.1` is being prepared around the
+`0.2.0-alpha.1` follows the
 [Axum-on-Docker alpha contract](./docs/alpha-scope.md), using Roots as the
 reference service. The selected integration installs the native agent inside
 the API image. The isolated Axum/PostgreSQL acceptance must pass against the
@@ -131,13 +131,15 @@ package, and `SHA256SUMS`:
 
 Each archive must contain one top-level directory with the executable
 `ebpf-tracker` binary, `LICENSE`, and `README.md`. To validate downloaded or
-locally assembled assets:
+locally assembled assets without replacing the supplied checksums:
 
 ```bash
 bash scripts/verify-release-artifacts.sh \
   --dist dist \
-  --tag vX.Y.Z \
-  --write-checksums
+  --tag v0.2.0-alpha.1
+bash scripts/verify-runtime-package.sh \
+  --deb dist/ebpf-tracker-runtime_0.2.0~alpha.1_amd64.deb \
+  --expected-version 0.2.0-alpha.1 --arch amd64
 (cd dist && sha256sum -c SHA256SUMS)
 ```
 

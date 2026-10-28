@@ -2,18 +2,49 @@ BEGIN
 {
   @agent_tids[cpid] = 1;
   printf("__EBPF_TRACKER_AGENT_READY__\n");
+  printf("__AGENT_DIAG_BEGIN cpid=%d\n", cpid);
 }
 
 tracepoint:sched:sched_process_fork
 /@agent_tids[args->parent_pid]/
 {
   @agent_tids[args->child_pid] = 1;
+  if (@agent_diag_count < 512) {
+    @agent_diag_count = @agent_diag_count + 1;
+    printf("__AGENT_DIAG_FORK parent=%d child=%d pid=%d tid=%d cpid=%d scope=%d child_scope=%d\n", args->parent_pid, args->child_pid, pid, tid, cpid, @agent_tids[tid], @agent_tids[args->child_pid]);
+  }
 }
 
 tracepoint:sched:sched_process_exit
 /@agent_tids[tid]/
 {
+  if (@agent_diag_count < 512) {
+    @agent_diag_count = @agent_diag_count + 1;
+    printf("__AGENT_DIAG_EXIT pid=%d tid=%d cpid=%d scope=%d\n", pid, tid, cpid, @agent_tids[tid]);
+  }
   delete(@agent_tids[tid]);
+}
+
+// Temporary, bounded synthetic-CI diagnostics. Remove before release.
+tracepoint:sched:sched_process_exec
+/@agent_tids[tid] || comm == "workload-helper" || comm == "axum-fixture" || comm == "tokio-rt-worker"/
+{
+  if (@agent_diag_count < 512) {
+    @agent_diag_count = @agent_diag_count + 1;
+    printf("__AGENT_DIAG_EXEC old_pid=%d new_pid=%d pid=%d tid=%d cpid=%d scope=%d comm=%s\n", args->old_pid, args->pid, pid, tid, cpid, @agent_tids[tid], comm);
+  }
+}
+
+tracepoint:syscalls:sys_enter_execve,
+tracepoint:syscalls:sys_enter_openat,
+tracepoint:syscalls:sys_enter_write,
+tracepoint:syscalls:sys_enter_connect
+/comm == "workload-helper" || comm == "axum-fixture" || comm == "tokio-rt-worker"/
+{
+  if (@agent_diag_count < 512) {
+    @agent_diag_count = @agent_diag_count + 1;
+    printf("__AGENT_DIAG_SYSCALL probe=%s pid=%d tid=%d cpid=%d scope=%d comm=%s\n", probe, pid, tid, cpid, @agent_tids[tid], comm);
+  }
 }
 
 tracepoint:syscalls:sys_enter_getpid
@@ -49,4 +80,5 @@ tracepoint:syscalls:sys_enter_connect
 END
 {
   clear(@agent_tids);
+  clear(@agent_diag_count);
 }

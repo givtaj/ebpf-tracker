@@ -4,20 +4,13 @@ This file tracks notable repo changes in progress on this branch.
 
 ## Unreleased
 
+## v0.2.0-alpha.1 - 2026-10-28
+
 ### Added
 
 - Added a native Linux `ebpf-tracker-agent` entrypoint for an existing Bookworm API image, with non-root workload execution, separate JSONL capture, graceful shutdown, and workload exit-status preservation.
 - Added a Bookworm runtime Debian package, checksum/installation verification, and an isolated Axum/PostgreSQL container acceptance fixture.
 - Added Dockerfile, Compose, and CI installation instructions for the same-container workflow. Roots remains a reference only; no Roots source, configuration, services, or data are changed.
-
-### Changed
-
-- Selected same-container process launching as the alpha integration. Recording follows the API process lifetime; Docker attachment remains outside the supported workflow.
-
-## v0.2.0-alpha.1 - 2026-10-26
-
-### Added
-
 - Added `ebpf-tracker replay <file>` to reopen saved JSONL or raw logs from the installed CLI using the bundled viewer, without starting Docker.
 - Added `--version` and `-V` to identify the installed release candidate.
 - Added release-tooling and customer-command resolution regression checks.
@@ -25,15 +18,17 @@ This file tracks notable repo changes in progress on this branch.
 
 ### Fixed
 
+- Strengthened native Linux acceptance to require the application leader and startup activity; added bounded temporary diagnostics while investigating missing amd64 leader events.
 - Fixed customer CLI validation resolving the tracker from a temporary application's Cargo manifest after changing directories; failures now include bounded diagnostics.
 - Accepted explicit alpha, beta, and release-candidate tags and marked them as GitHub prereleases.
 - Pinned release customer checks to the freshly built candidate and made archive verification compatible with macOS Bash.
 - Preserve the wrapped workload's exit status when bpftrace reports its own successful completion.
+- Preserved downloaded release checksums during artifact sanity checks, including the runtime package.
 - Wait for both viewer HTTP readiness and launcher readiness logs in customer checks, avoiding a race on fast-starting viewers.
 
 ### Changed
 
-- Focused the alpha target on a Linux Docker Axum API, using Roots as the reference application. Command tracing and replay are implemented foundations; Docker attachment and Axum-specific acceptance remain pending. Deferred cloud, monitoring, general Node.js workload, perf, AI, dataset, and OTLP feature expansion.
+- Focused the alpha on launching an API inside its existing Bookworm container and recording its process lifetime. Added synthetic Axum/PostgreSQL acceptance; existing-container attachment and real Roots acceptance remain separate. Deferred cloud, monitoring, general Node.js workload, perf, AI, dataset, and OTLP feature expansion.
 - Made the sample config enable all four supported probes and clarified host Node requirements and syscall-attempt limitations.
 - Added strict Linux release validation on pull requests and a manual release-workflow path that builds verified archives without publishing.
 - Added a persisted Rust `CARGO_HOME` cache to the managed tracing runtime and documented the build-first direct-binary workflow for app-level Rust traces.

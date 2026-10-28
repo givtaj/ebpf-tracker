@@ -16,9 +16,13 @@ are outside this alpha's contract. See [SECURITY.md](../SECURITY.md).
 
 ## Obtain the package
 
-Until the candidate is published, build the package from this checkout. The
-builder compiles inside Bookworm and exports a `.deb`; it does not install
-anything on your host:
+Download the matching runtime `.deb` and `SHA256SUMS` from the
+[GitHub release](https://github.com/givtaj/ebpf-tracker/releases). The published
+runtime package targets amd64. On Linux, verify the files you downloaded with
+`sha256sum --check --ignore-missing SHA256SUMS`. If the desired release or
+architecture has no package yet, build it from this checkout. The builder
+compiles inside Bookworm and exports a `.deb`; it does not install anything
+on your host:
 
 ```bash
 # For an x86_64 Linux Docker host:
@@ -37,7 +41,24 @@ Select the architecture of the **application image**, not the machine running
 your editor. Published package support depends on passing that architecture's
 live acceptance gate; a successful cross-build alone is insufficient.
 
-Copy the verified package into your application's Docker build context as
+For the amd64 release, run this from your application's Docker build context
+on Linux (after the release assets are available):
+
+```bash
+mkdir -p vendor
+(
+  set -eu
+  cd vendor
+  release=https://github.com/givtaj/ebpf-tracker/releases/download/v0.2.0-alpha.1
+  package=ebpf-tracker-runtime_0.2.0~alpha.1_amd64.deb
+  curl --fail --location --output "$package" "$release/$package"
+  curl --fail --location --output SHA256SUMS "$release/SHA256SUMS"
+  sha256sum --check --ignore-missing SHA256SUMS
+  cp "$package" ebpf-tracker-runtime.deb
+)
+```
+
+For a source build, copy the verified package into that build context as
 `vendor/ebpf-tracker-runtime.deb`. Pin and checksum the package in CI. The
 launcher is a different executable from the host `ebpf-tracker` CLI, which
 orchestrates Docker and provides replay.
@@ -65,7 +86,10 @@ Replace `roots` and `roots-api` with the existing application user and command.
 Create that user as before; the agent does not create accounts. Its UID must
 be nonzero. The collector runs as root, while the application has its UID/GID,
 groups, capabilities, and `no_new_privs` set by the launcher. The application
-keeps its working directory, arguments, environment, and stdout/stderr.
+keeps its working directory, arguments, ordinary environment, and stdout/stderr;
+internal `EBPF_TRACKER_` control variables are removed. Set `HOME` explicitly
+to the application home if it relies on that value: changing Docker's default
+user can change Docker-provided environment defaults.
 
 The image's default user is now root. Consequently Docker healthchecks and
 `docker exec` commands also default to root; use `docker exec --user roots ...`

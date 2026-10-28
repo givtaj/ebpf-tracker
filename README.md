@@ -1,10 +1,9 @@
 # ebpf-tracker
 
-> **Preparing an Axum-on-Docker alpha: `0.2.0-alpha.1`.** The target is one
-> Rust API service in Linux Docker, using Roots as the reference application.
-> The candidate is unpublished. The selected integration installs a tracing
-> agent inside the API's existing image. See the [installation guide](./docs/in-container.md)
-> and [alpha scope](./docs/alpha-scope.md).
+> **Axum-on-Docker alpha: `0.2.0-alpha.1`.** Trace one trusted Rust API
+> service by installing an agent inside its existing Bookworm image.
+> See [release downloads](https://github.com/givtaj/ebpf-tracker/releases),
+> the [installation guide](./docs/in-container.md), and [alpha scope](./docs/alpha-scope.md).
 
 The in-container `ebpf-tracker-agent` starts your API, records selected syscall
 activity from its process tree, and writes replayable JSONL. Install the
@@ -24,8 +23,8 @@ Docker runtime and provides offline replay. `attach docker` remains a scaffold;
 it is not used by the in-container integration.
 
 New cloud-attach, host-monitoring, general Node.js workload, perf, AI, dataset,
-and OTLP feature work is deferred while this Axum workflow is implemented and
-verified. Existing commands remain available for experimentation.
+and OTLP feature work is deferred while this Axum workflow is refined.
+Existing commands remain available for experimentation.
 
 For Rust apps, trace `cargo run` when build and dependency activity is part of
 the session you want to inspect. When the goal is app-only behavior, build the
@@ -73,7 +72,7 @@ Both paths require compatible Linux kernel tracing facilities. See the
 [alpha scope](./docs/alpha-scope.md) for the current verification evidence.
 
 The original command-tracing and replay workflow is also available.
-Build the candidate from this checkout:
+Build the host CLI from this checkout:
 
 ```bash
 cargo install --path . --locked

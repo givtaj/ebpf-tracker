@@ -32,6 +32,7 @@ for capability in ("CapInh", "CapPrm", "CapEff", "CapBnd", "CapAmb"):
 require(status["NoNewPrivs"] == "1", "application must have no_new_privs")
 
 for filename, expected in (
+    ("startup-marker.txt", "fixture-startup-marker\n"),
     ("route-marker.txt", "fixture-route-marker\n"),
     ("descendant-marker.txt", "fixture-descendant-marker\n"),
     ("shutdown-marker.txt", "fixture-graceful-shutdown\n"),
@@ -59,6 +60,12 @@ require({"execve", "open_at", "write", "connect"} <= {record.get("kind") for rec
         "trace must contain all four syscall kinds")
 app_pid = identity["pid"]
 app_events = [record for record in syscalls if record.get("pid") == app_pid]
+require(any(record.get("kind") == "execve" for record in app_events), "primary application exec attempt")
+require(any(record.get("kind") == "open_at" and record.get("file") == "/data/startup-marker.txt"
+            and record.get("comm") == "axum-fixture" for record in app_events),
+        "primary application startup file open before worker creation")
+require(any(record.get("kind") == "write" and record.get("comm") == "axum-fixture"
+            for record in app_events), "primary application thread write attempt")
 require(any(record.get("kind") == "connect" for record in app_events), "app PostgreSQL connect attempt")
 require(any(record.get("kind") == "write" for record in app_events), "app write attempt")
 require(any(record.get("kind") == "open_at" and record.get("file") == "/data/route-marker.txt"

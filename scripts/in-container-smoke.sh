@@ -139,9 +139,24 @@ except subprocess.TimeoutExpired:
   if [[ "${name}" == existing-output ]]; then
     [[ "$(cat "${case_dir}/traces/events.jsonl")" == preserve-existing-capture ]] || fail "existing capture was overwritten"
   fi
+  if [[ "${name}" == exit23 ]]; then
+    python3 - "${case_dir}" <<'PY'
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+pid = int((root / "data/app.pid").read_text())
+if (root / "data/exit23-marker.txt").read_text() != "fixture-exit23-marker\n":
+    raise SystemExit("in-container smoke: FAIL: exit23 marker missing")
+records = [json.loads(line) for line in (root / "traces/events.jsonl").read_text().splitlines()]
+events = [record for record in records if record.get("type") == "syscall" and record.get("pid") == pid]
+if not {"execve", "open_at", "write"} <= {record.get("kind") for record in events}:
+    raise SystemExit("in-container smoke: FAIL: exit23 primary process exec/open/write missing")
+if not any(record.get("kind") == "open_at" and record.get("file") == "/data/exit23-marker.txt" for record in events):
+    raise SystemExit("in-container smoke: FAIL: exit23 primary process marker open missing")
+PY
+  fi
   printf '%s %s\n' "${name}" "${actual}" >>"${output_dir}/negative-cases.txt"
 }
-run_case exit23 23 --privileged --pid host "${FIXTURE_IMAGE}" /bin/sh -c 'exit 23'
+run_case exit23 23 --privileged --pid host "${FIXTURE_IMAGE}" /bin/sh -c 'printf "%s\n" "$$" > /data/app.pid; printf "fixture-exit23-marker\n" > /data/exit23-marker.txt; exit 23'
 run_case missing-command 127 --privileged --pid host "${FIXTURE_IMAGE}" /no-such-fixture-command
 run_case missing-permission 125 --cap-drop ALL --security-opt no-new-privileges "${FIXTURE_IMAGE}" /bin/sh -c 'touch /data/should-not-run'
 run_case nonroot-agent 125 --user 10001:10001 "${FIXTURE_IMAGE}" /bin/sh -c 'touch /data/should-not-run'

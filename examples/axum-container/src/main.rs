@@ -3,8 +3,17 @@ use serde_json::{json, Value};
 use std::{collections::BTreeMap, env, fs, process::Command};
 use tokio_postgres::NoTls;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Exercise the original application thread before Tokio creates workers.
+    // Worker/descendant events alone must not make the capture gate pass.
+    fs::write("/data/startup-marker.txt", "fixture-startup-marker\n")?;
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(serve())
+}
+
+async fn serve() -> Result<(), Box<dyn std::error::Error>> {
     let router = Router::new()
         .route("/health", get(|| async { Json(json!({"ok": true})) }))
         .route("/identity", get(identity))

@@ -1,6 +1,6 @@
 # Axum In-Container Alpha
 
-Candidate: `0.2.0-alpha.1`, unpublished. The selected workflow installs a
+Release line: `0.2.0-alpha.1`. The selected workflow installs a
 native tracing agent inside an existing Bookworm application image and starts
 the Axum API through that agent. Roots supplied the reference Docker layout;
 no Roots files, services, credentials, or data are changed.
