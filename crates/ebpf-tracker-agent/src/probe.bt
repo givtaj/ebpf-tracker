@@ -35,18 +35,6 @@ tracepoint:sched:sched_process_exec
   }
 }
 
-tracepoint:syscalls:sys_enter_execve,
-tracepoint:syscalls:sys_enter_openat,
-tracepoint:syscalls:sys_enter_write,
-tracepoint:syscalls:sys_enter_connect
-/comm == "workload-helper" || comm == "axum-fixture" || comm == "tokio-rt-worker"/
-{
-  if (@agent_diag_count < 512) {
-    @agent_diag_count = @agent_diag_count + 1;
-    printf("__AGENT_DIAG_SYSCALL probe=%s pid=%d tid=%d cpid=%d scope=%d comm=%s\n", probe, pid, tid, cpid, @agent_tids[tid], comm);
-  }
-}
-
 tracepoint:syscalls:sys_enter_getpid
 /pid == cpid/
 {
@@ -54,27 +42,47 @@ tracepoint:syscalls:sys_enter_getpid
 }
 
 tracepoint:syscalls:sys_enter_execve
-/@agent_tids[tid] && pid != cpid/
 {
-  printf("execve comm=%s pid=%d\n", comm, pid);
+  if ((comm == "workload-helper" || comm == "axum-fixture" || comm == "tokio-rt-worker") && @agent_diag_count < 512) {
+    @agent_diag_count = @agent_diag_count + 1;
+    printf("__AGENT_DIAG_EXECVE pid=%d tid=%d cpid=%d scope=%d\n", pid, tid, cpid, @agent_tids[tid]);
+  }
+  if (@agent_tids[tid] && pid != cpid) {
+    printf("execve comm=%s pid=%d\n", comm, pid);
+  }
 }
 
 tracepoint:syscalls:sys_enter_openat
-/@agent_tids[tid] && pid != cpid/
 {
-  printf("openat comm=%s pid=%d file=%s\n", comm, pid, str(args->filename));
+  if ((comm == "workload-helper" || comm == "axum-fixture" || comm == "tokio-rt-worker") && @agent_diag_count < 512) {
+    @agent_diag_count = @agent_diag_count + 1;
+    printf("__AGENT_DIAG_OPENAT pid=%d tid=%d cpid=%d scope=%d\n", pid, tid, cpid, @agent_tids[tid]);
+  }
+  if (@agent_tids[tid] && pid != cpid) {
+    printf("openat comm=%s pid=%d file=%s\n", comm, pid, str(args->filename));
+  }
 }
 
 tracepoint:syscalls:sys_enter_write
-/@agent_tids[tid] && pid != cpid/
 {
-  printf("write comm=%s pid=%d bytes=%d\n", comm, pid, args->count);
+  if ((comm == "workload-helper" || comm == "axum-fixture" || comm == "tokio-rt-worker") && @agent_diag_count < 512) {
+    @agent_diag_count = @agent_diag_count + 1;
+    printf("__AGENT_DIAG_WRITE pid=%d tid=%d cpid=%d scope=%d\n", pid, tid, cpid, @agent_tids[tid]);
+  }
+  if (@agent_tids[tid] && pid != cpid) {
+    printf("write comm=%s pid=%d bytes=%d\n", comm, pid, args->count);
+  }
 }
 
 tracepoint:syscalls:sys_enter_connect
-/@agent_tids[tid] && pid != cpid/
 {
-  printf("connect comm=%s pid=%d fd=%d\n", comm, pid, args->fd);
+  if ((comm == "workload-helper" || comm == "axum-fixture" || comm == "tokio-rt-worker") && @agent_diag_count < 512) {
+    @agent_diag_count = @agent_diag_count + 1;
+    printf("__AGENT_DIAG_CONNECT pid=%d tid=%d cpid=%d scope=%d\n", pid, tid, cpid, @agent_tids[tid]);
+  }
+  if (@agent_tids[tid] && pid != cpid) {
+    printf("connect comm=%s pid=%d fd=%d\n", comm, pid, args->fd);
+  }
 }
 
 END

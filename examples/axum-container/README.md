@@ -26,11 +26,11 @@ only the containers and disposable volumes created for its unique Compose
 project; it does not prune Docker resources.
 
 Acceptance requires the primary application's exec and a known startup file
-write before Tokio creates worker threads. It covers `/health`, `/identity`, and `/exercise` (a real PostgreSQL
-connection/query, a file write, a descendant process and stdout/stderr markers),
-followed by graceful SIGTERM. It also checks exit 23 together with the primary
-shell's exec/open/write trace, a missing command, denied
-tracing permissions, a nonroot agent invocation, and refusal to overwrite an
+write before Tokio creates worker threads. It covers `/health`, `/identity`, and
+`/exercise` (a real PostgreSQL connection/query, a file write, a descendant
+process and stdout/stderr markers), followed by graceful SIGTERM. It also checks
+exit 23 together with the primary shell's exec/open/write trace, a missing
+command, denied tracing permissions, a nonroot agent invocation, and refusal to overwrite an
 existing capture or start its workload. An unrelated container
 generates concurrent activity; Linux hosts additionally run a host noise
 process. Neither may appear in the workload trace.
