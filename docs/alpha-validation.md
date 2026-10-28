@@ -77,6 +77,21 @@ The CI candidate package was
 The downloaded bytes were checked against that manifest. CI retains the
 `runtime-candidate-amd64` and `in-container-alpha-evidence` artifacts.
 
+## Tagged artifact gate
+
+The `v0.2.0-alpha.1` [release run 40719860865](https://github.com/givtaj/ebpf-tracker/actions/runs/40719860865)
+passed strict validation, both platform builds, installed runtime acceptance,
+and all installed Linux archive checks. That final check traced the Rust and
+Node fixtures and replayed embedded viewer assets outside the checkout.
+Cleanup then failed on a root-owned synthetic fixture file, so publication was
+withheld. The public tag is preserved. Version `0.2.0-alpha.2` carries the
+scoped cleanup repair and must pass the entire workflow before publication.
+A disposable Bookworm container verified the actual cleanup function with
+root-owned output files and an unprivileged caller: success 0, original failure
+23, cleanup failure 1, original-plus-cleanup failure 23, SIGINT 130, and SIGTERM
+143. Cleanup needs no privilege escalation, and the success message is emitted
+only after cleanup completes.
+
 ## Release status and limits
 
 Publication is separately gated by tagged release validation, clean platform

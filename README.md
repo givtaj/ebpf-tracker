@@ -1,6 +1,6 @@
 # ebpf-tracker
 
-> **Axum-on-Docker alpha: `0.2.0-alpha.1`.** Trace one trusted Rust API
+> **Axum-on-Docker alpha: `0.2.0-alpha.2`.** Trace one trusted Rust API
 > service by installing an agent inside its existing Bookworm image.
 > See [release downloads](https://github.com/givtaj/ebpf-tracker/releases),
 > the [installation guide](./docs/in-container.md), and [alpha scope](./docs/alpha-scope.md).
@@ -64,7 +64,7 @@ Build the runtime package and run its isolated live acceptance example:
 ```bash
 bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runtime
 bash scripts/in-container-smoke.sh \
-  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.1_amd64.deb
+  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb
 ```
 
 For a native arm64 Docker engine, use `linux/arm64` and the `_arm64.deb` package.

@@ -10,7 +10,7 @@ publish = false
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
-ebpf-tracker-events = { path = "../ebpf-tracker-events", version = "0.2.0-alpha.1" }
+ebpf-tracker-events = { path = "../ebpf-tracker-events", version = "0.2.0-alpha.2" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"

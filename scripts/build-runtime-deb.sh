@@ -17,7 +17,7 @@ Buildx. The package contains a precompiled agent; the runtime needs no Rust tool
 Defaults: linux/amd64, repository dist/runtime. Cross-architecture builds require
 Docker emulation. A successful build does not prove live kernel tracing.
 Outputs: ebpf-tracker-runtime_VERSION_ARCH.deb and SHA256SUMS.runtime.
-Debian prerelease versions use ~ (for example 0.2.0~alpha.1).
+Debian prerelease versions use ~ (for example 0.2.0~alpha.2).
 EOF
 }
 while [[ $# -gt 0 ]]; do

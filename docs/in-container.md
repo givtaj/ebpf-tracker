@@ -41,8 +41,8 @@ bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runti
 ```
 
 The current package name is
-`ebpf-tracker-runtime_0.2.0~alpha.1_amd64.deb` (or `_arm64.deb`). Debian spells
-the prerelease separator as `~`; the agent prints version `0.2.0-alpha.1`.
+`ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb` (or `_arm64.deb`). Debian spells
+the prerelease separator as `~`; the agent prints version `0.2.0-alpha.2`.
 Select the architecture of the **application image**, not the machine running
 your editor. Published package support depends on passing that architecture's
 live acceptance gate; a successful cross-build alone is insufficient.
@@ -55,8 +55,8 @@ mkdir -p vendor
 (
   set -eu
   cd vendor
-  release=https://github.com/givtaj/ebpf-tracker/releases/download/v0.2.0-alpha.1
-  package=ebpf-tracker-runtime_0.2.0~alpha.1_amd64.deb
+  release=https://github.com/givtaj/ebpf-tracker/releases/download/v0.2.0-alpha.2
+  package=ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb
   curl --fail --location --output "$package" "$release/$package"
   curl --fail --location --output SHA256SUMS "$release/SHA256SUMS"
   sha256sum --check --ignore-missing SHA256SUMS
@@ -193,7 +193,7 @@ capture contract:
 
 ```bash
 bash scripts/in-container-smoke.sh \
-  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.1_amd64.deb
+  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb
 ```
 
 Use the `_arm64.deb` package for a native arm64 Docker engine. The fixture does
