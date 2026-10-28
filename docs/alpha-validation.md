@@ -92,6 +92,14 @@ root-owned output files and an unprivileged caller: success 0, original failure
 143. Cleanup needs no privilege escalation, and the success message is emitted
 only after cleanup completes.
 
+The alpha.2 [non-publishing release run 40723398161](https://github.com/givtaj/ebpf-tracker/actions/runs/40723398161)
+then passed every validation, build, runtime, installed-archive, cleanup, and
+asset-assembly job. A parallel main run exposed an unrelated fixture race: a
+noise marker snapshot was empty between truncation and rewrite. Both noise
+writers now publish by atomic rename; 4,000 concurrent read assertions passed
+without changing the capture or exclusion requirements. Final main and tag
+gates remain required for publication.
+
 ## Release status and limits
 
 Publication is separately gated by tagged release validation, clean platform

@@ -100,7 +100,7 @@ if [[ "$(uname -s)" == Linux ]]; then
   ln -s /bin/sh "${output_dir}/host-noise"
   (
     while [[ ! -e "${output_dir}/stop-host-noise" ]]; do
-      "${output_dir}/host-noise" -c 'printf unrelated > "$1"' _ "${output_dir}/host-noise-marker"
+      "${output_dir}/host-noise" -c 'printf unrelated > "$1.next" && mv "$1.next" "$1"' _ "${output_dir}/host-noise-marker"
       sleep 0.05
     done
   ) &

@@ -8,6 +8,8 @@ This file tracks notable repo changes in progress on this branch.
 
 ### Fixed
 
+- Publish synthetic noise markers atomically so the isolation test cannot read an empty file between truncation and write; retain the full capture and noise-exclusion assertions.
+
 - Clean up root-owned files from the installed-archive acceptance fixture without changing application captures or swallowing failures. The alpha.1 tag passed its product checks but publication was withheld when fixture cleanup failed; the tag remains unchanged.
 
 ## v0.2.0-alpha.1 - 2026-10-28
