@@ -1,7 +1,8 @@
 # In-container alpha validation — 2026-10-28
 
-The local arm64 runtime package passed a real installation and capture test.
-This records the synthetic fixture result, not acceptance against Roots.
+Both local arm64 and native amd64 runtime packages passed real installation
+and capture tests. These results use the synthetic fixture and do not establish
+acceptance against Roots. The first section records the earlier arm64 build.
 
 ## Package and environment
 
@@ -55,11 +56,35 @@ native agent and managed command runtime reject the known-bad
 `7.0.0-1017-azure` kernel before starting a workload. Temporary diagnostics were
 removed; primary-process startup and fast-exit capture assertions remain.
 
+## Native amd64 acceptance
+
+[CI run 40717437051](https://github.com/givtaj/ebpf-tracker/actions/runs/40717437051)
+passed all four jobs on commit `c8db19926e43853447d2949390d8bbeb774e3796`.
+The live jobs used Ubuntu 22.04, kernel `6.8.0-1064-azure`, and native amd64
+Bookworm containers. The real installed package passed all 13 Linux agent
+tests, the Axum/PostgreSQL fixture, and offline replay of its actual capture.
+
+The capture contained 37 JSONL records, including 36 syscall records and all
+four kinds. Primary-process exec and startup file/write activity were present,
+as were the API route and descendant markers. UID/GID 10001, zero capability
+sets, NoNewPrivs, concurrent-noise exclusion, separate logs, graceful exit 0,
+exit 23, missing-command/permission/output checks, SIGINT, forced shutdown 137,
+and collector-failure 125 all passed. Every lifecycle app was reaped.
+
+The CI candidate package was
+`ebpf-tracker-runtime_0.2.0~alpha.1_amd64.deb`, with SHA-256
+`9246fee645c223a0aea55d4a7682c94dc90ea9d22aa39930f9b58bcb15a9c1ca`.
+The downloaded bytes were checked against that manifest. CI retains the
+`runtime-candidate-amd64` and `in-container-alpha-evidence` artifacts.
+
 ## Release status and limits
 
-The candidate is unpublished at this checkpoint. Native amd64 CI and release
-artifact verification are required before publication. The workflows retain
-the tested package and evidence; they also replay the actual API capture.
+Publication is separately gated by tagged release validation, clean platform
+archive builds, installed-archive acceptance, runtime-package acceptance, and
+checksum assembly. The release rebuilds its packages; use the final
+[release assets and SHA256SUMS](https://github.com/givtaj/ebpf-tracker/releases)
+for installation. A package version or this pre-release evidence alone does
+not establish that publication completed.
 
 The fixture uses synthetic data and a separate PostgreSQL 17 container. No
 Roots files, service configuration, databases, or running services were used

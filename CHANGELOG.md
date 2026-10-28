@@ -9,7 +9,7 @@ This file tracks notable repo changes in progress on this branch.
 ### Added
 
 - Added a native Linux `ebpf-tracker-agent` entrypoint for an existing Bookworm API image, with non-root workload execution, separate JSONL capture, graceful shutdown, and workload exit-status preservation.
-- Added a Bookworm runtime Debian package, checksum/installation verification, and an isolated Axum/PostgreSQL container acceptance fixture.
+- Added a Bookworm runtime Debian package, checksum/installation verification, and an isolated Axum/PostgreSQL container acceptance fixture, verified on native amd64 CI and a local arm64 Linux VM.
 - Added Dockerfile, Compose, and CI installation instructions for the same-container workflow. Roots remains a reference only; no Roots source, configuration, services, or data are changed.
 - Added `ebpf-tracker replay <file>` to reopen saved JSONL or raw logs from the installed CLI using the bundled viewer, without starting Docker.
 - Added `--version` and `-V` to identify the installed release candidate.
