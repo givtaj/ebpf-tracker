@@ -14,6 +14,12 @@ do not make the container a security sandbox. Production, shared runners,
 untrusted pull requests, rootless Docker, and ordinary private PID namespaces
 are outside this alpha's contract. See [SECURITY.md](../SECURITY.md).
 
+The host kernel `7.0.0-1017-azure` is rejected because an
+[upstream regression](https://github.com/actions/runner-images/issues/15003)
+silently drops syscall events outside one CPU. Changing the container image
+does not fix its host kernel. Use a fixed Linux host; the release CI temporarily
+uses GitHub Actions `runs-on: ubuntu-22.04` with the full capture assertions.
+
 ## Obtain the package
 
 Download the matching runtime `.deb` and `SHA256SUMS` from the

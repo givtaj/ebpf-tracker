@@ -1,9 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-mount -t debugfs nodev /sys/kernel/debug >/dev/null 2>&1 || true
-
 transport="${EBPF_TRACKER_TRANSPORT:-bpftrace}"
+
+if [[ "${transport}" == bpftrace && "$(uname -r)" == 7.0.0-1017-azure ]]; then
+  echo "kernel 7.0.0-1017-azure silently drops syscall tracepoint events; workload was not started" >&2
+  echo "use a fixed or known-good host kernel (GitHub Actions: ubuntu-22.04)" >&2
+  echo "see https://github.com/actions/runner-images/issues/15003" >&2
+  exit 125
+fi
+
+mount -t debugfs nodev /sys/kernel/debug >/dev/null 2>&1 || true
 
 if [ "$#" -eq 0 ]; then
   set -- /bin/true

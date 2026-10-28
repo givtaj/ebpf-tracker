@@ -23,6 +23,9 @@ to an already-running API or stop collection independently of the server.
 - Linux Docker hosts with working eBPF/tracefs and the documented privileged,
   host-PID development configuration. The actual kernel support is tested at
   startup; missing tracing support is an error, not a silently empty capture.
+- The known-bad `7.0.0-1017-azure` host kernel is rejected; see
+  [the upstream regression](https://github.com/actions/runner-images/issues/15003).
+  Live GitHub release gates use Ubuntu 22.04 until the affected runner is fixed.
 - An existing non-root application user, with UID/GID/groups and capabilities
   managed by the launcher. The image's default Docker user remains root for
   the collector; healthcheck and exec identity must be handled explicitly.

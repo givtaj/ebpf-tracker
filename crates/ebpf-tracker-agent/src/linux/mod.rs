@@ -1,3 +1,4 @@
+mod kernel;
 mod permissions;
 mod tracefs;
 mod workload;
@@ -90,6 +91,7 @@ fn run_inner(options: Options) -> Result<i32, String> {
     if unsafe { libc::geteuid() } != 0 {
         return Err("capture supervisor requires root and Linux tracing permissions; the application is launched separately as --app-user".into());
     }
+    kernel::check_host()?;
     let (uid, gid) = permissions::resolve_user(&options.app_user)?;
     let last_capability = permissions::capability_limit()
         .map_err(|error| format!("cannot inspect Linux capabilities: {error}"))?;

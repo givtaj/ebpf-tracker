@@ -18,7 +18,8 @@ This file tracks notable repo changes in progress on this branch.
 
 ### Fixed
 
-- Strengthened native Linux acceptance to require the application leader and startup activity; added bounded numeric diagnostics, checked against Bookworm bpftrace, while investigating missing amd64 leader events.
+- Strengthened native Linux acceptance to require application-leader startup and fast-exit capture.
+- Pinned live CI/release gates to Ubuntu 22.04 and reject the known-bad `7.0.0-1017-azure` host kernel, which silently drops syscall events on other CPUs (actions/runner-images#15003).
 - Fixed customer CLI validation resolving the tracker from a temporary application's Cargo manifest after changing directories; failures now include bounded diagnostics.
 - Accepted explicit alpha, beta, and release-candidate tags and marked them as GitHub prereleases.
 - Pinned release customer checks to the freshly built candidate and made archive verification compatible with macOS Bash.

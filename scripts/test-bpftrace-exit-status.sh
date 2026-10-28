@@ -13,10 +13,17 @@ rustc --test "${script_dir}/exec-target-from-env.rs" -o "${tmp_root}/helper-test
 
 cat > "${tmp_root}/bin/mount" <<'EOF'
 #!/bin/sh
+touch "${FIXTURE_MOUNT_CALLED}"
 exit 0
+EOF
+cat > "${tmp_root}/bin/uname" <<'EOF'
+#!/bin/sh
+[ "$#" -eq 1 ] && [ "$1" = -r ] || exit 91
+printf '%s\n' "${FIXTURE_KERNEL_RELEASE}"
 EOF
 cat > "${tmp_root}/bin/bpftrace" <<'EOF'
 #!/bin/sh
+touch "${FIXTURE_TRACER_CALLED}"
 [ "$2" = -c ] && [ "$3" = /usr/local/bin/exec-target-from-env ] || exit 91
 case "${FIXTURE_TRACER_MODE:-run}" in
   no-status) exit 0 ;;
@@ -33,9 +40,12 @@ cat > "${tmp_root}/argument-check" <<'EOF'
 #!/bin/bash
 [[ "$#" -eq 4 && "$1" == '' && "$2" == 'two words' && "$3" == "single'quote" && "$4" == '$(exit 77)' ]]
 EOF
-chmod +x "${tmp_root}/bin/mount" "${tmp_root}/bin/bpftrace"
+chmod +x "${tmp_root}/bin/mount" "${tmp_root}/bin/uname" "${tmp_root}/bin/bpftrace"
 touch "${tmp_root}/probe.bt"
 export FIXTURE_HELPER="${tmp_root}/exec-target-from-env"
+export FIXTURE_KERNEL_RELEASE=6.17.0-1022-azure
+export FIXTURE_MOUNT_CALLED="${tmp_root}/mount-called"
+export FIXTURE_TRACER_CALLED="${tmp_root}/tracer-called"
 export EBPF_TRACKER_PROBE="${tmp_root}/probe.bt"
 export EBPF_TRACKER_ALLOW_HOST_WIDE_PROBE=1
 export EBPF_TRACKER_TRANSPORT=bpftrace
@@ -63,6 +73,18 @@ run_case() {
   printf 'test-bpftrace-exit-status: PASS: %s\n' "${name}"
 }
 
+FIXTURE_KERNEL_RELEASE=7.0.0-1017-azure run_case 'known-bad kernel fails before workload' 125 run /bin/sh -c 'touch "$1"' _ "${tmp_root}/workload-called"
+[[ ! -e "${FIXTURE_MOUNT_CALLED}" && ! -e "${FIXTURE_TRACER_CALLED}" && ! -e "${tmp_root}/workload-called" ]] || {
+  printf 'test-bpftrace-exit-status: FAIL: known-bad kernel reached mount, tracer or workload\n' >&2
+  exit 1
+}
+for expected in '7.0.0-1017-azure' 'workload was not started' 'ubuntu-22.04' 'https://github.com/actions/runner-images/issues/15003'; do
+  grep -Fq "${expected}" "${tmp_root}/stderr" || {
+    printf 'test-bpftrace-exit-status: FAIL: known-bad kernel diagnostic missing %s\n' "${expected}" >&2
+    exit 1
+  }
+done
+FIXTURE_KERNEL_RELEASE=7.0.0-1018-azure run_case 'adjacent kernel release is not blocked' 23 run /bin/sh -c 'exit 23'
 run_case 'success' 0 run /bin/sh -c 'exit 0'
 run_case 'nonzero workload status' 23 run /bin/sh -c 'exit 23'
 run_case 'missing executable' 127 run "${tmp_root}/does-not-exist"

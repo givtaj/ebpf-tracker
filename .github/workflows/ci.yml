@@ -38,7 +38,8 @@ jobs:
 
   in-container-alpha:
     name: Bookworm runtime package and Axum/PostgreSQL acceptance
-    runs-on: ubuntu-latest
+    # Ubuntu 24.04 Azure kernel regression: actions/runner-images#15003.
+    runs-on: ubuntu-22.04
     needs: test
     if: ${{ github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
     timeout-minutes: 60
@@ -123,7 +124,8 @@ jobs:
 
   customer-ux:
     name: strict Linux release gate
-    runs-on: ubuntu-latest
+    # Keep live syscall gates off the affected 7.0.0-1017-azure kernel.
+    runs-on: ubuntu-22.04
     needs: test
     if: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
     timeout-minutes: 60

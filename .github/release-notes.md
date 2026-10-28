@@ -25,6 +25,11 @@ namespace on an isolated, trusted development or disposable CI host. It is not
 for production, shared runners, or untrusted workloads. Dropping app
 capabilities and filtering events do not create a security sandbox.
 
+The known-bad `7.0.0-1017-azure` host kernel is rejected because it silently
+drops syscall events outside one CPU. Live GitHub release gates use Ubuntu
+22.04 while [the upstream runner regression](https://github.com/actions/runner-images/issues/15003)
+remains unresolved. Changing the application image cannot fix a host kernel.
+
 The launcher waits for tracing readiness, drops application privileges,
 keeps stdout/stderr in Docker logs, forwards shutdown signals, and preserves
 workload exit status. Each run requires a new output file. Stopping the traced

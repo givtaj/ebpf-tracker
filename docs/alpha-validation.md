@@ -43,6 +43,18 @@ existing bpftrace exit-status cases also passed. The package check caught and
 fixed a Bash 3 versus Bash 5 tilde-expansion difference in Debian prerelease
 version conversion. Package and fixture builders are pinned to Rust 1.96.
 
+## Native amd64 investigation
+
+Initial native amd64 runs built and installed the package, but the real capture
+gate rejected missing application events. Bounded diagnostics showed that
+process-tree membership remained correct while syscall callbacks disappeared.
+This matches the confirmed Ubuntu 24.04 Azure kernel regression in
+[actions/runner-images#15003](https://github.com/actions/runner-images/issues/15003).
+The release gates now use the recommended Ubuntu 22.04 runner, and both the
+native agent and managed command runtime reject the known-bad
+`7.0.0-1017-azure` kernel before starting a workload. Temporary diagnostics were
+removed; primary-process startup and fast-exit capture assertions remain.
+
 ## Release status and limits
 
 The candidate is unpublished at this checkpoint. Native amd64 CI and release

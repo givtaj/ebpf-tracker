@@ -14,9 +14,11 @@ permissions:
   contents: read
 
 jobs:
+  # Live gates use Ubuntu 22.04 while actions/runner-images#15003 affects 24.04.
+  # Build the host CLI on the same baseline for its glibc compatibility.
   validate:
     name: verify Linux release and tracer runtime
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     outputs:
       release_tag: ${{ steps.version.outputs.release_tag }}
@@ -77,7 +79,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
           - runner: macos-15-intel
             target: x86_64-apple-darwin
@@ -135,7 +137,7 @@ jobs:
 
   runtime-package:
     name: build and verify installed runtime package (amd64)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: validate
     timeout-minutes: 45
 
@@ -203,7 +205,7 @@ jobs:
 
   assemble:
     name: verify and assemble release assets
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: [validate, build, runtime-package]
     timeout-minutes: 50
 
@@ -276,7 +278,7 @@ jobs:
 
   release:
     name: publish GitHub release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: [validate, assemble]
     if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
     timeout-minutes: 10

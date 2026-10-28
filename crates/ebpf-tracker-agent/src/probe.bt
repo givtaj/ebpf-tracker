@@ -2,37 +2,18 @@ BEGIN
 {
   @agent_tids[cpid] = 1;
   printf("__EBPF_TRACKER_AGENT_READY__\n");
-  printf("__AGENT_DIAG_BEGIN cpid=%d\n", cpid);
 }
 
 tracepoint:sched:sched_process_fork
 /@agent_tids[args->parent_pid]/
 {
   @agent_tids[args->child_pid] = 1;
-  if (@agent_diag_count < 512) {
-    @agent_diag_count = @agent_diag_count + 1;
-    printf("__AGENT_DIAG_FORK parent=%d child=%d pid=%d tid=%d cpid=%d scope=%d child_scope=%d\n", args->parent_pid, args->child_pid, pid, tid, cpid, @agent_tids[tid], @agent_tids[args->child_pid]);
-  }
 }
 
 tracepoint:sched:sched_process_exit
 /@agent_tids[tid]/
 {
-  if (@agent_diag_count < 512) {
-    @agent_diag_count = @agent_diag_count + 1;
-    printf("__AGENT_DIAG_EXIT pid=%d tid=%d cpid=%d scope=%d\n", pid, tid, cpid, @agent_tids[tid]);
-  }
   delete(@agent_tids[tid]);
-}
-
-// Temporary, bounded synthetic-CI diagnostics. Remove before release.
-tracepoint:sched:sched_process_exec
-/@agent_tids[tid] || comm == "workload-helper" || comm == "axum-fixture" || comm == "tokio-rt-worker"/
-{
-  if (@agent_diag_count < 512) {
-    @agent_diag_count = @agent_diag_count + 1;
-    printf("__AGENT_DIAG_EXEC old_pid=%d new_pid=%d pid=%d tid=%d cpid=%d scope=%d comm=%s\n", args->old_pid, args->pid, pid, tid, cpid, @agent_tids[tid], comm);
-  }
 }
 
 tracepoint:syscalls:sys_enter_getpid
@@ -42,51 +23,30 @@ tracepoint:syscalls:sys_enter_getpid
 }
 
 tracepoint:syscalls:sys_enter_execve
+/@agent_tids[tid] && pid != cpid/
 {
-  if ((comm == "workload-helper" || comm == "axum-fixture" || comm == "tokio-rt-worker") && @agent_diag_count < 512) {
-    @agent_diag_count = @agent_diag_count + 1;
-    printf("__AGENT_DIAG_EXECVE pid=%d tid=%d cpid=%d scope=%d\n", pid, tid, cpid, @agent_tids[tid]);
-  }
-  if (@agent_tids[tid] && pid != cpid) {
-    printf("execve comm=%s pid=%d\n", comm, pid);
-  }
+  printf("execve comm=%s pid=%d\n", comm, pid);
 }
 
 tracepoint:syscalls:sys_enter_openat
+/@agent_tids[tid] && pid != cpid/
 {
-  if ((comm == "workload-helper" || comm == "axum-fixture" || comm == "tokio-rt-worker") && @agent_diag_count < 512) {
-    @agent_diag_count = @agent_diag_count + 1;
-    printf("__AGENT_DIAG_OPENAT pid=%d tid=%d cpid=%d scope=%d\n", pid, tid, cpid, @agent_tids[tid]);
-  }
-  if (@agent_tids[tid] && pid != cpid) {
-    printf("openat comm=%s pid=%d file=%s\n", comm, pid, str(args->filename));
-  }
+  printf("openat comm=%s pid=%d file=%s\n", comm, pid, str(args->filename));
 }
 
 tracepoint:syscalls:sys_enter_write
+/@agent_tids[tid] && pid != cpid/
 {
-  if ((comm == "workload-helper" || comm == "axum-fixture" || comm == "tokio-rt-worker") && @agent_diag_count < 512) {
-    @agent_diag_count = @agent_diag_count + 1;
-    printf("__AGENT_DIAG_WRITE pid=%d tid=%d cpid=%d scope=%d\n", pid, tid, cpid, @agent_tids[tid]);
-  }
-  if (@agent_tids[tid] && pid != cpid) {
-    printf("write comm=%s pid=%d bytes=%d\n", comm, pid, args->count);
-  }
+  printf("write comm=%s pid=%d bytes=%d\n", comm, pid, args->count);
 }
 
 tracepoint:syscalls:sys_enter_connect
+/@agent_tids[tid] && pid != cpid/
 {
-  if ((comm == "workload-helper" || comm == "axum-fixture" || comm == "tokio-rt-worker") && @agent_diag_count < 512) {
-    @agent_diag_count = @agent_diag_count + 1;
-    printf("__AGENT_DIAG_CONNECT pid=%d tid=%d cpid=%d scope=%d\n", pid, tid, cpid, @agent_tids[tid]);
-  }
-  if (@agent_tids[tid] && pid != cpid) {
-    printf("connect comm=%s pid=%d fd=%d\n", comm, pid, args->fd);
-  }
+  printf("connect comm=%s pid=%d fd=%d\n", comm, pid, args->fd);
 }
 
 END
 {
   clear(@agent_tids);
-  clear(@agent_diag_count);
 }

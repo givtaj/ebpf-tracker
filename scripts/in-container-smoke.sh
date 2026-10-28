@@ -71,6 +71,8 @@ trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+uname -a >"${output_dir}/host-uname.txt"
+docker info --format '{{.KernelVersion}}' >"${output_dir}/docker-kernel.txt"
 cp "${fixture_dir}/Cargo.toml" "${fixture_dir}/Cargo.lock" "${fixture_dir}/Dockerfile" "${context_dir}/"
 cp -R "${fixture_dir}/src" "${context_dir}/src"
 cp "${package}" "${context_dir}/runtime.deb"
@@ -82,6 +84,12 @@ printf 'in-container smoke: building fixture with %s\n' "$(basename -- "${packag
 docker image inspect "${FIXTURE_IMAGE}" --format '{{.Os}}/{{.Architecture}} {{.Id}}' >"${output_dir}/image.txt"
 docker run --rm --entrypoint /usr/bin/dpkg-query "${FIXTURE_IMAGE}" -W ebpf-tracker-runtime >"${output_dir}/package.txt"
 docker run --rm --entrypoint /usr/bin/ebpf-tracker-agent "${FIXTURE_IMAGE}" --version >"${output_dir}/agent-version.txt"
+docker run --rm --entrypoint /usr/bin/uname "${FIXTURE_IMAGE}" -a >"${output_dir}/container-uname.txt"
+if docker run --rm --privileged --pid host --entrypoint /usr/bin/bpftrace "${FIXTURE_IMAGE}" --info >"${output_dir}/bpftrace-info.txt" 2>&1; then
+  printf '0\n' >"${output_dir}/bpftrace-info-exit-code.txt"
+else
+  printf '%s\n' "$?" >"${output_dir}/bpftrace-info-exit-code.txt"
+fi
 "${compose[@]}" up -d postgres noise app
 app_id="$("${compose[@]}" ps -q app)"
 [[ -n "${app_id}" ]] || fail "app container was not created"
