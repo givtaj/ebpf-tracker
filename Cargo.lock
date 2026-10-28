@@ -110,7 +110,7 @@ dependencies = [
 
 [[package]]
 name = "ebpf-tracker"
-version = "0.1.1"
+version = "0.2.0-alpha.1"
 dependencies = [
  "ebpf-tracker-dataset",
  "ebpf-tracker-events",
@@ -122,8 +122,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ebpf-tracker-agent"
+version = "0.2.0-alpha.1"
+dependencies = [
+ "ebpf-tracker-events",
+ "libc",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "ebpf-tracker-dataset"
-version = "0.1.1"
+version = "0.2.0-alpha.1"
 dependencies = [
  "ebpf-tracker-events",
  "reqwest",
@@ -133,7 +143,7 @@ dependencies = [
 
 [[package]]
 name = "ebpf-tracker-events"
-version = "0.1.1"
+version = "0.2.0-alpha.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -141,7 +151,7 @@ dependencies = [
 
 [[package]]
 name = "ebpf-tracker-otel"
-version = "0.1.1"
+version = "0.2.0-alpha.1"
 dependencies = [
  "ebpf-tracker-events",
  "opentelemetry-proto",
@@ -153,14 +163,14 @@ dependencies = [
 
 [[package]]
 name = "ebpf-tracker-perf"
-version = "0.1.1"
+version = "0.2.0-alpha.1"
 dependencies = [
  "ebpf-tracker-events",
 ]
 
 [[package]]
 name = "ebpf-tracker-viewer"
-version = "0.1.1"
+version = "0.2.0-alpha.1"
 
 [[package]]
 name = "either"

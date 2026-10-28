@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/release-version.sh"
+
 dist_dir="dist"
 release_tag=""
 write_checksums=0
@@ -12,11 +15,12 @@ fail() {
 
 usage() {
   cat <<'EOF'
-Usage: bash scripts/verify-release-artifacts.sh --tag <vMAJOR.MINOR.PATCH> [--dist <directory>] [--write-checksums]
+Usage: bash scripts/verify-release-artifacts.sh --tag <vVERSION> [--dist <directory>] [--write-checksums]
 
 Verifies that the complete Linux/macOS release archive set exists, that every
 archive contains only the expected binary, license, and README, and that the
 binary is executable. --write-checksums creates <directory>/SHA256SUMS.
+VERSION may be MAJOR.MINOR.PATCH or MAJOR.MINOR.PATCH-{alpha,beta,rc}.N.
 EOF
 }
 
@@ -50,7 +54,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "${release_tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "--tag must be vMAJOR.MINOR.PATCH"
+is_release_tag "${release_tag}" || fail "--tag must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-{alpha,beta,rc}.N"
 [[ -d "${dist_dir}" ]] || fail "artifact directory does not exist: ${dist_dir}"
 command -v tar >/dev/null 2>&1 || fail "tar is required"
 if [[ "${write_checksums}" -eq 1 ]]; then
@@ -83,7 +87,10 @@ for target in "${expected_targets[@]}"; do
   archive_root="ebpf-tracker-${release_tag}-${target}"
   [[ -s "${archive_path}" ]] || fail "missing or empty archive: ${archive_path}"
 
-  mapfile -t entries < <(tar -tzf "${archive_path}")
+  entries=()
+  while IFS= read -r entry; do
+    entries+=("${entry}")
+  done < <(tar -tzf "${archive_path}")
   [[ "${#entries[@]}" -eq 4 ]] || fail "${archive_name} must contain one directory and exactly three files"
   for entry in "${entries[@]}"; do
     normalized_entry="${entry%/}"

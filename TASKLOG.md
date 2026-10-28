@@ -12,11 +12,28 @@ This file tracks user-requested work and delegated agent tasks in progress on th
 
 ## Active
 
+### Focused Alpha Release
+
+- 2026-10-28 | Task: Deliver the authorized same-container Axum tracing alpha: native launcher, Bookworm package, Docker/CI recipe, and isolated live acceptance; leave Roots unchanged | Owner: Codex | Status: implementation verified; native amd64 CI 40717437051 and local arm64 live acceptance/replay passed; tagged asset assembly and publication pending | Output: `docs/in-container.md`, `docs/alpha-validation.md`, package and fixture
+- 2026-10-28 | Task: Implement the native Linux tracing launcher with privilege dropping, signal forwarding, exit status, and JSONL output | Agent: alpha-scope-audit | Status: completed; removed diagnostics; known-bad kernel rejected before launch; two kernel guard tests passed | Output: `crates/ebpf-tracker-agent/`
+- 2026-10-28 | Task: Build the Bookworm runtime Debian package and integrate verified release assets | Agent: alpha-release-audit | Status: completed; arm64 package installed; final workflow review passed; downloaded-checksum guidance corrected | Output: package build scripts, Docker builder, release workflow
+- 2026-10-28 | Task: Add an isolated Axum/PostgreSQL fixture and same-container runtime acceptance in CI | Agent: alpha-ci-fix | Status: completed; stronger startup/exit-23 capture, kernel evidence and 13 wrapper regressions passed; native amd64 CI 40717437051 passed | Output: `examples/axum-container/`, runtime smoke script, CI workflow
+
+- 2026-10-26 | Task: Align the alpha with the user's clarified target: a Linux Docker Axum server, using Roots as the reference application | Owner: Codex | Status: superseded by the 2026-10-28 authorized same-container launcher decision; Roots remains unchanged | Output: Roots source audit and revised `docs/alpha-scope.md`
+- 2026-10-26 | Task: Inspect Roots Axum runtime and disposable integration requirements without changing Roots | Agent: roots-axum-audit | Status: completed (read-only) | Output: Axum 0.8 / Docker / PostgreSQL source facts, existing-container recommendation, thread/container isolation and service continuity acceptance; no Roots files or services changed
+
+- 2026-10-26 | Task: Prepare a focused alpha release around a supported development workflow and verify current release readiness | Owner: Codex | Status: foundations verified; Axum integration and publication pending | Verification: strict Linux PR CI passed on `9b549db` (https://github.com/givtaj/ebpf-tracker/actions/runs/40313892899); local release gate passed, 130 workspace tests plus helper quoting test, 11 exit-status regressions, 4 command-resolution regressions, viewer/replay and dataset smoke passed; private vulnerability reporting enabled | Output: `docs/alpha-scope.md`, release preparation and gates
+- 2026-10-26 | Task: Audit and repair release tooling, packaging, versioning, and validation blockers | Agent: alpha-release-audit | Status: completed | Output: prerelease workflow, version checks, archive regression checks
+- 2026-10-26 | Task: Review the product surface and implement installed replay and version discovery for the focused alpha | Agent: alpha-scope-audit | Status: completed | Output: root replay/version commands, unit/integration tests, offline replay smoke
+- 2026-10-26 | Task: Repair customer CLI command resolution and strengthen live alpha acceptance | Agent: alpha-ci-fix | Status: completed | Output: command-resolution regression checks; JSONL, four-probe demo, and exit-status gates; live verification pending Linux CI
+- 2026-10-26 | Task: Preserve the wrapped workload exit status through bpftrace collection | Agent: alpha-runtime-exit | Status: completed | Output: supervised status handoff; 11 wrapper regressions and quoting unit test passed; live Linux gate pending
+- 2026-10-26 | Task: Verify packaged Linux binaries without the build checkout, including embedded assets and Node tracing | Agent: alpha-release-audit | Status: implemented; live verification pending release workflow | Output: installed alpha gate in release asset assembly
+
 ### Platform Attach And Cloud Targets
 
-- 2026-03-25 | Task: Follow up with an `inspektor-gadget` attach backend implementation for Kubernetes and AWS EKS targets | Owner: Codex | Status: planned | Output: pending
-- 2026-03-25 | Task: Follow up with a `tetragon` attach backend implementation for long-running Kubernetes and AWS EKS targets | Owner: Codex | Status: planned | Output: pending
-- 2026-03-25 | Task: Evaluate and scope `aws-ecs` attach support for EC2 launch type after the EKS path is stable | Owner: Codex | Status: planned | Output: pending
+- 2026-03-25 | Task: Follow up with an `inspektor-gadget` attach backend implementation for Kubernetes and AWS EKS targets | Owner: Codex | Status: deferred during focused alpha | Output: `docs/alpha-scope.md`
+- 2026-03-25 | Task: Follow up with a `tetragon` attach backend implementation for long-running Kubernetes and AWS EKS targets | Owner: Codex | Status: deferred during focused alpha | Output: `docs/alpha-scope.md`
+- 2026-03-25 | Task: Evaluate and scope `aws-ecs` attach support for EC2 launch type after the EKS path is stable | Owner: Codex | Status: deferred during focused alpha | Output: `docs/alpha-scope.md`
 
 ## Completed
 

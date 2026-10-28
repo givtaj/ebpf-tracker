@@ -21,6 +21,7 @@ use intelligence::{
     parse_intelligence_arg, IntelligenceOptions, IntelligenceReporter, IntelligenceSupervisor,
 };
 use monitor::{parse_monitor_args, run_monitor, MonitorArgs};
+use replay::{parse_replay_args, print_replay_usage, run_replay, ReplayArgs, ReplayParseOutcome};
 use runtime::{
     parse_runtime_selection, resolve_compose_file_with_source, resolve_runtime_profile,
     write_if_changed, RuntimeAssetResolution, RuntimeAssetSource, RuntimeProfile, RuntimeSelection,
@@ -32,6 +33,7 @@ mod compose;
 mod dashboard;
 mod intelligence;
 mod monitor;
+mod replay;
 mod runtime;
 
 const DEFAULT_PROBE: &str = "/probes/execve.bt";
@@ -306,6 +308,9 @@ impl DemoBranding {
 
 enum ParseOutcome {
     Help,
+    Version,
+    ReplayHelp,
+    Replay(ReplayArgs),
     Attach(AttachArgs),
     Demo(DemoArgs),
     Monitor(MonitorArgs),
@@ -405,49 +410,47 @@ impl RuntimeSelection {
 
 fn print_usage() {
     eprintln!(
-        "Usage: ebpf-tracker [--probe <file-or-name>] [--allow-host-wide-probe] [--config <path>] [--log-enable] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--runtime <auto|rust|node>] [--dashboard] [--dashboard-port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [--intelligence-endpoint <url>] <command> [args...]"
+        "ebpf-tracker {} — trace a trusted development command, then replay its activity",
+        env!("CARGO_PKG_VERSION")
     );
-    eprintln!("Usage: ebpf-tracker attach <docker|k8s|aws-eks|aws-ecs> [--backend <inspektor-gadget|tetragon>] [--namespace <ns>] [--selector <label-selector>] [--pod <name>] [--cluster <name>] [--region <aws-region>] [--service <name>] [--task <id>] [--container <name>] [experimental]");
-    eprintln!("Usage: ebpf-tracker demo [--list] [--emit <raw|jsonl>] [--transport <bpftrace|perf>] [--dashboard] [--dashboard-port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [example-name]");
-    eprintln!("Usage: ebpf-tracker see [--port <port>] [--intelligence-dataset] [--intelligence-provider <lm-studio|openai-compatible>] [--intelligence-model <name>] [example-name]");
+    eprintln!("Alpha workflow:");
+    eprintln!("  ebpf-tracker demo --emit jsonl session-io-demo > trace.jsonl");
+    eprintln!(
+        "  ebpf-tracker --config ebpf-tracker.toml --emit jsonl <command> [args...] > trace.jsonl"
+    );
+    eprintln!("  ebpf-tracker replay trace.jsonl");
+    eprintln!("  ebpf-tracker --dashboard <command> [args...]");
+    eprintln!("Live tracing needs a Linux Docker host with privileged/eBPF support. Use trusted development workloads only.");
+    eprintln!("Dashboard and replay need Node.js on the host. Replay does not start Docker or run the recorded command.");
+    eprintln!("Without a probe config, only execve is recorded. Enable probe.exec/open/write/connect for all four event types.");
+    eprintln!(
+        "Use --version (-V) for the installed version; replay --help for offline viewer options."
+    );
+    eprintln!();
+    eprintln!("Core commands:");
+    eprintln!(
+        "Usage: ebpf-tracker [--config <path>] [--log-enable] [--emit <raw|jsonl>] [--runtime <auto|rust|node>] [--dashboard] [--dashboard-port <port>] <command> [args...]"
+    );
+    eprintln!("Usage: ebpf-tracker replay <path> [--port <port>] [--speed <x>] [--interval-ms <ms>] [--focus-comm <comm>]");
+    eprintln!("Usage: ebpf-tracker demo [--list] [--log-enable] [--emit <raw|jsonl>] [--dashboard] [--dashboard-port <port>] [example-name]");
+    eprintln!("Usage: ebpf-tracker see [--port <port>] [example-name]");
+    eprintln!("Defaults: raw output, bpftrace transport, auto runtime, dashboard port {DEFAULT_DASHBOARD_PORT}.");
+    eprintln!(
+        "Demo/see use embedded examples when no checkout is available; see opens the dashboard demo."
+    );
+    eprintln!();
+    eprintln!(
+        "Advanced and experimental compatibility options (outside the focused alpha contract):"
+    );
+    eprintln!("  --transport <bpftrace|perf>  --probe <file-or-name>  --allow-host-wide-probe");
+    eprintln!("  --intelligence-dataset  --intelligence-provider <lm-studio|openai-compatible>");
+    eprintln!("  --intelligence-model <name>  --intelligence-endpoint <url>");
+    eprintln!("Usage: ebpf-tracker attach <docker|k8s|aws-eks|aws-ecs> [--backend <inspektor-gadget|tetragon>] [--namespace <ns>] [--selector <label-selector>] [--pod <name>] [--cluster <name>] [--region <aws-region>] [--service <name>] [--task <id>] [--container <name>]");
     eprintln!(
         "Usage: ebpf-tracker monitor [--interval-ms <ms>] [--samples <n>|--once] [--no-clear]"
     );
-    eprintln!("Default emit mode: raw");
-    eprintln!("Default transport: bpftrace");
-    eprintln!("Default runtime: auto");
-    eprintln!("Default dashboard port: {DEFAULT_DASHBOARD_PORT}");
-    eprintln!("First run: ebpf-tracker /bin/true");
-    eprintln!("Trace your app: ebpf-tracker cargo run");
-    eprintln!("Try the dashboard demo: ebpf-tracker see");
-    eprintln!("Example: ebpf-tracker cargo run");
-    eprintln!("Example: ebpf-tracker npm test");
-    eprintln!("Example: ebpf-tracker --config ebpf-tracker.toml cargo run");
-    eprintln!("Example: ebpf-tracker --probe execve.bt cargo run");
-    eprintln!("Example: ebpf-tracker --allow-host-wide-probe --probe ./probes/custom.bt cargo run");
-    eprintln!("Example: ebpf-tracker --log-enable cargo test");
-    eprintln!("Example: ebpf-tracker --emit jsonl cargo run");
-    eprintln!("Example: ebpf-tracker --transport perf --emit jsonl cargo run");
-    eprintln!("Example: ebpf-tracker --runtime node /bin/sh -lc \"npm run dev\"");
-    eprintln!("Example: ebpf-tracker attach k8s --selector app=payments");
-    eprintln!("Example: ebpf-tracker attach aws-eks --cluster prod --region us-east-1 --selector app=payments");
-    eprintln!("Example: ebpf-tracker --dashboard cargo run");
-    eprintln!("Example: ebpf-tracker see --intelligence-dataset session-io-demo");
-    eprintln!("Example: ebpf-tracker --dashboard --intelligence-dataset cargo run");
-    eprintln!("Example: ebpf-tracker demo --dashboard session-io-demo");
-    eprintln!("Example: ebpf-tracker see");
-    eprintln!("Example: ebpf-tracker see postcard-generator-rust");
-    eprintln!("Example: ebpf-tracker monitor --interval-ms 2000");
-    eprintln!("Example: ebpf-tracker monitor --once --no-clear");
-    eprintln!("Repository demo mode: cargo demo --list");
-    eprintln!("Repository demo example: cargo demo --emit jsonl session-io-demo");
-    eprintln!("Clone-only helpers: cargo demo, cargo see, cargo viewer, cargo monitor");
-    eprintln!("The see subcommand is a shortcut for the dashboard demo experience.");
-    eprintln!(
-        "The demo and see subcommands prefer a local checkout but fall back to embedded demo assets when needed."
-    );
-    eprintln!("Monitor is a terminal-first droplet overview; it uses /proc plus read-only Docker and bpftool checks when available.");
     eprintln!("Attach currently executes inspektor-gadget for k8s/aws-eks targets; docker/aws-ecs and tetragon paths remain scaffold-only.");
+    eprintln!("Monitor reads /proc and bounded Docker/bpftool status. See docs/cli.md for the full reference.");
 }
 
 fn resolve_probe_path(raw_probe: &str) -> String {
@@ -487,6 +490,12 @@ fn parse_dashboard_port(raw_port: &str) -> Result<u16, String> {
 }
 
 fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
+    if matches!(args.first().map(String::as_str), Some("replay")) {
+        return match parse_replay_args(&args[1..])? {
+            ReplayParseOutcome::Help => Ok(ParseOutcome::ReplayHelp),
+            ReplayParseOutcome::Run(replay_args) => Ok(ParseOutcome::Replay(replay_args)),
+        };
+    }
     if matches!(args.first().map(String::as_str), Some("attach")) {
         return match parse_attach_args(&args[1..])? {
             AttachParseOutcome::Help => Ok(ParseOutcome::Help),
@@ -583,6 +592,7 @@ fn parse_args(args: Vec<String>) -> Result<ParseOutcome, String> {
                 index += 2;
             }
             "-h" | "--help" => return Ok(ParseOutcome::Help),
+            "-V" | "--version" => return Ok(ParseOutcome::Version),
             "--" => {
                 index += 1;
                 break;
@@ -1967,6 +1977,15 @@ fn run() -> Result<i32, String> {
             print_usage();
             Ok(0)
         }
+        ParseOutcome::Version => {
+            println!("ebpf-tracker {}", env!("CARGO_PKG_VERSION"));
+            Ok(0)
+        }
+        ParseOutcome::ReplayHelp => {
+            print_replay_usage();
+            Ok(0)
+        }
+        ParseOutcome::Replay(replay_args) => run_replay(replay_args),
         ParseOutcome::Attach(attach_args) => run_attach(attach_args),
         ParseOutcome::Monitor(monitor_args) => run_monitor(monitor_args),
         ParseOutcome::Demo(demo_args) => {
@@ -2031,6 +2050,40 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn root_version_is_distinct_from_wrapped_command_version() {
+        for flag in ["--version", "-V"] {
+            assert!(matches!(
+                parse_args(vec![flag.to_string()]),
+                Ok(ParseOutcome::Version)
+            ));
+        }
+        for command in [vec!["node", "--version"], vec!["--", "--version"]] {
+            let parsed = parse_args(command.iter().map(|arg| arg.to_string()).collect())
+                .expect("wrapped command should parse");
+            let ParseOutcome::Run(cli_args) = parsed else {
+                panic!("wrapped version argument must not select tracker version");
+            };
+            assert_eq!(
+                cli_args.command.last().map(String::as_str),
+                Some("--version")
+            );
+        }
+    }
+
+    #[test]
+    fn replay_dispatch_does_not_select_live_command_mode() {
+        assert!(matches!(
+            parse_args(vec!["replay".to_string(), "trace.jsonl".to_string()]),
+            Ok(ParseOutcome::Replay(_))
+        ));
+        assert!(matches!(
+            parse_args(vec!["replay".to_string(), "--help".to_string()]),
+            Ok(ParseOutcome::ReplayHelp)
+        ));
+        assert!(parse_args(vec!["replay".to_string()]).is_err());
+    }
 
     #[test]
     fn generated_probe_includes_enabled_sections_only() {

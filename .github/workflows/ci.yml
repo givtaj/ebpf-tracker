@@ -33,6 +33,67 @@ jobs:
       - name: Build
         run: cargo build --workspace --locked
 
+      - name: Check standalone Axum fixture formatting
+        run: cargo fmt --manifest-path examples/axum-container/Cargo.toml --check
+
+  in-container-alpha:
+    name: Bookworm runtime package and Axum/PostgreSQL acceptance
+    # Ubuntu 24.04 Azure kernel regression: actions/runner-images#15003.
+    runs-on: ubuntu-22.04
+    needs: test
+    if: ${{ github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build real Bookworm runtime package
+        run: bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runtime
+
+      - name: Run installed-package container acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          packages=(dist/runtime/ebpf-tracker-runtime_*_amd64.deb)
+          [[ "${#packages[@]}" -eq 1 && -f "${packages[0]}" ]]
+          bash scripts/in-container-smoke.sh --package "${packages[0]}" --output-dir target/in-container-evidence
+
+      - name: Install Rust for the replay CLI
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node for offline replay
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Replay the actual API capture without Docker
+        run: |
+          cargo build --locked --bin ebpf-tracker
+          bash scripts/replay-smoke.sh --tracker target/debug/ebpf-tracker --trace target/in-container-evidence/events.jsonl
+
+      - name: Preserve container acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: in-container-alpha-evidence
+          path: target/in-container-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload validated runtime candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: runtime-candidate-amd64
+          path: |
+            dist/runtime/*.deb
+            dist/runtime/SHA256SUMS.runtime
+          if-no-files-found: error
+          retention-days: 7
+
   smoke:
     runs-on: ubuntu-latest
     needs: test
@@ -62,10 +123,12 @@ jobs:
         run: bash scripts/dataset-smoke.sh
 
   customer-ux:
-    runs-on: ubuntu-latest
+    name: strict Linux release gate
+    # Keep live syscall gates off the affected 7.0.0-1017-azure kernel.
+    runs-on: ubuntu-22.04
     needs: test
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    timeout-minutes: 45
+    if: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -73,6 +136,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -83,66 +148,10 @@ jobs:
           node-version: "24"
           package-manager-cache: false
 
-      - name: Check customer UX capabilities
-        id: customer_ux_capabilities
-        shell: bash
+      - name: Run strict Linux release gate
         run: |
-          set -euo pipefail
-          required_scripts=(
-            scripts/customer-ux-check.sh
-            scripts/customer-cli-e2e.sh
-            scripts/customer-viewer-e2e.sh
-            scripts/customer-data-e2e.sh
-          )
-          for required_script in "${required_scripts[@]}"; do
-            if [[ ! -f "${required_script}" ]]; then
-              echo "required customer UX script is missing: ${required_script}" >&2
-              exit 1
-            fi
-          done
-
-          customer_ux_reason=""
-          if ! command -v cargo >/dev/null 2>&1; then
-            customer_ux_reason="cargo is unavailable on this runner"
-          elif ! command -v docker >/dev/null 2>&1; then
-            customer_ux_reason="Docker CLI is unavailable on this runner"
-          elif ! docker info >/dev/null 2>&1; then
-            customer_ux_reason="Docker daemon is unavailable on this runner"
-          elif ! command -v curl >/dev/null 2>&1; then
-            customer_ux_reason="curl is unavailable on this runner"
-          elif [[ ! -x /bin/true ]]; then
-            customer_ux_reason="/bin/true is unavailable on this runner"
-          elif ! command -v python3 >/dev/null 2>&1; then
-            customer_ux_reason="python3 is unavailable for the loopback bind preflight"
-          elif ! python3 -c 'import socket; sock = socket.socket(); sock.bind(("127.0.0.1", 0)); sock.close()' >/dev/null 2>&1; then
-            customer_ux_reason="this runner cannot bind 127.0.0.1"
-          fi
-
-          if [[ -n "${customer_ux_reason}" ]]; then
-            echo "customer_ux_available=0" >> "${GITHUB_OUTPUT}"
-            echo "customer_ux_reason=${customer_ux_reason}" >> "${GITHUB_OUTPUT}"
-          else
-            echo "customer_ux_available=1" >> "${GITHUB_OUTPUT}"
-            echo "customer_ux_reason=runner prerequisites satisfied" >> "${GITHUB_OUTPUT}"
-          fi
-
-      - name: Run customer UX suite (strict when supported)
-        shell: bash
-        env:
-          CUSTOMER_UX_AVAILABLE: ${{ steps.customer_ux_capabilities.outputs.customer_ux_available }}
-          CUSTOMER_UX_REASON: ${{ steps.customer_ux_capabilities.outputs.customer_ux_reason }}
-        run: |
-          set -euo pipefail
-          if [[ "${CUSTOMER_UX_AVAILABLE}" == "1" ]]; then
-            bash scripts/customer-ux-check.sh --strict-prereqs --fail-on-skip
-          else
-            echo "::warning title=Customer UX runtime skipped::${CUSTOMER_UX_REASON}"
-            {
-              echo "### Customer UX runtime not exercised"
-              echo
-              echo "Host capability reason: ${CUSTOMER_UX_REASON}"
-              echo
-              echo "The suite is running in documented skip mode; this result is not runtime-release evidence."
-            } >> "${GITHUB_STEP_SUMMARY}"
-            bash scripts/customer-ux-check.sh
-          fi
+          bash scripts/release-check.sh \
+            --with-runtime-smoke \
+            --with-demo-smoke \
+            --with-isolation-smoke \
+            --with-customer-ux

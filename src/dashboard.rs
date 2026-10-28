@@ -82,7 +82,8 @@ pub(crate) fn run_with_dashboard(
         eprintln!("dashboard mode forces --emit jsonl for the viewer stream");
     }
 
-    let mut child = Command::new("node")
+    let mut command = Command::new("node");
+    command
         .arg(&dashboard_script)
         .arg("--port")
         .arg(dashboard.port.to_string())
@@ -90,21 +91,25 @@ pub(crate) fn run_with_dashboard(
         .arg(&current_exe)
         .args(tracker_args)
         .current_dir(project_dir)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
         .envs(
             io::stdin()
                 .is_terminal()
                 .then_some([(INTERACTIVE_PTY_ENV_NAME, "1")])
                 .into_iter()
                 .flatten(),
-        )
+        );
+    run_viewer_command(command)
+}
+
+pub(crate) fn run_viewer_command(mut command: Command) -> Result<i32, String> {
+    let mut child = command
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|err| {
             format!(
-                "failed to start dashboard viewer via node {}: {err}",
-                dashboard_script.display()
+                "failed to start viewer via node (Node.js must be installed on the host): {err}"
             )
         })?;
 

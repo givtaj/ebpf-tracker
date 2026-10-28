@@ -79,11 +79,15 @@ wait_for_snapshot() {
   local url="$2"
   local pid="$3"
   local log_file="$4"
+  local ready_message="$5"
   local attempts=$((timeout_seconds * 5))
   local snapshot=""
 
   for _ in $(seq 1 "${attempts}"); do
-    if snapshot="$(curl -fsS "${url}/snapshot" 2>/dev/null)"; then
+    # The HTTP server may become reachable before its launcher writes the
+    # readiness line. Require both observations within the same bounded wait.
+    if snapshot="$(curl -fsS --max-time 2 "${url}/snapshot" 2>/dev/null)" &&
+      grep -Fq "${ready_message}" "${log_file}"; then
       printf '%s\n' "${snapshot}"
       return 0
     fi
@@ -178,7 +182,7 @@ printf '[customer-viewer-e2e] launching product demo via `see` on %s\n' "${live_
 ) >"${live_log}" 2>&1 &
 live_pid=$!
 
-live_snapshot="$(wait_for_snapshot "live-see" "${live_url}" "${live_pid}" "${live_log}")"
+live_snapshot="$(wait_for_snapshot "live-see" "${live_url}" "${live_pid}" "${live_log}" "live trace viewer on ${live_url}")"
 if [[ "${live_snapshot}" != *'"mode":"live"'* ]]; then
   show_log_tail "live-see" "${live_log}"
   fail "live snapshot did not report mode=live"
@@ -203,7 +207,7 @@ printf '[customer-viewer-e2e] launching replay UX via dashboard-smoke on %s\n' "
 ) >"${replay_log}" 2>&1 &
 replay_pid=$!
 
-replay_snapshot="$(wait_for_snapshot "replay" "${replay_url}" "${replay_pid}" "${replay_log}")"
+replay_snapshot="$(wait_for_snapshot "replay" "${replay_url}" "${replay_pid}" "${replay_log}" "dashboard smoke: ready at ${replay_url}")"
 if [[ "${replay_snapshot}" != *'"mode":"replay"'* ]]; then
   show_log_tail "replay" "${replay_log}"
   fail "replay snapshot did not report mode=replay"

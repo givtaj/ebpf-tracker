@@ -10,6 +10,22 @@ unsupported unless a maintainer says otherwise in a security advisory.
 
 ## Local Tracing Trust Boundary
 
+The in-container agent uses the same privileged, host-PID development boundary.
+It does not require the Docker socket or a source-code bind mount. The agent
+runs its collector as root, then starts the application as the specified
+non-root user with capabilities removed and `no_new_privs` set. This reduces
+the application's privileges but does not isolate the privileged container
+from the host. Docker healthchecks and `docker exec` still default to the
+image's root user unless explicitly configured otherwise.
+
+The agent's fixed probes filter to the launched process tree. Its output
+contains syscall metadata, not application logs, environment values, HTTP
+bodies, or file contents. The output file is created with mode 0644 (subject to
+the process umask) for CI collection; protect the parent directory and artifact
+access. Existing output files are rejected so a restart cannot silently erase
+an earlier capture. Collector/startup failures fail the diagnostic session;
+the launcher does not silently continue an untraced workload.
+
 Run mode is powerful by design. The shipped Docker Compose runtimes currently:
 
 - set `privileged: true`;
@@ -68,8 +84,8 @@ configure; use only endpoints you trust and understand.
 
 ## Reporting A Vulnerability
 
-Use GitHub private vulnerability reporting from the repository's **Security**
-tab when it is available. Include the affected version or commit, impact,
+Use [GitHub private vulnerability reporting](https://github.com/givtaj/ebpf-tracker/security/advisories/new)
+from the repository's **Security** tab (enabled for this alpha). Include the affected version or commit, impact,
 reproduction steps, and a minimal proof of concept.
 
 Do not open a public issue or discussion containing exploit details, secrets,
