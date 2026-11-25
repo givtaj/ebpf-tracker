@@ -37,12 +37,20 @@ jobs:
         run: cargo fmt --manifest-path examples/axum-container/Cargo.toml --check
 
   in-container-alpha:
-    name: Bookworm runtime package and Axum/PostgreSQL acceptance
-    # Ubuntu 24.04 Azure kernel regression: actions/runner-images#15003.
-    runs-on: ubuntu-22.04
+    name: Bookworm runtime package and Axum/PostgreSQL acceptance (${{ matrix.arch }})
+    # Native Ubuntu 22.04 hosts avoid the known Ubuntu 24.04 Azure regression.
+    runs-on: ${{ matrix.runner }}
     needs: test
     if: ${{ github.ref == 'refs/heads/main' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: amd64
+          - runner: ubuntu-22.04-arm
+            arch: arm64
 
     steps:
       - name: Checkout
@@ -50,14 +58,28 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Require a native host and Docker engine
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          host_arch="$(uname -m)"
+          docker_arch="$(docker info --format '{{.Architecture}}')"
+          case "${host_arch}" in x86_64) host_arch=amd64 ;; aarch64) host_arch=arm64 ;; esac
+          case "${docker_arch}" in x86_64) docker_arch=amd64 ;; aarch64) docker_arch=arm64 ;; esac
+          [[ "${host_arch}" == "${EXPECTED_ARCH}" && "${docker_arch}" == "${EXPECTED_ARCH}" ]]
+          [[ -z "${DOCKER_DEFAULT_PLATFORM:-}" || "${DOCKER_DEFAULT_PLATFORM}" == "linux/${EXPECTED_ARCH}" ]]
+          uname -a
+          docker info --format '{{.OSType}}/{{.Architecture}} {{.KernelVersion}}'
+
       - name: Build real Bookworm runtime package
-        run: bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runtime
+        run: bash scripts/build-runtime-deb.sh --platform linux/${{ matrix.arch }} --output-dir dist/runtime
 
       - name: Run installed-package container acceptance
         shell: bash
         run: |
           set -euo pipefail
-          packages=(dist/runtime/ebpf-tracker-runtime_*_amd64.deb)
+          packages=(dist/runtime/ebpf-tracker-runtime_*_${{ matrix.arch }}.deb)
           [[ "${#packages[@]}" -eq 1 && -f "${packages[0]}" ]]
           bash scripts/in-container-smoke.sh --package "${packages[0]}" --output-dir target/in-container-evidence
 
@@ -79,7 +101,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: in-container-alpha-evidence
+          name: in-container-alpha-evidence-${{ matrix.arch }}
           path: target/in-container-evidence/
           if-no-files-found: ignore
           retention-days: 7
@@ -87,7 +109,7 @@ jobs:
       - name: Upload validated runtime candidate
         uses: actions/upload-artifact@v7
         with:
-          name: runtime-candidate-amd64
+          name: runtime-candidate-${{ matrix.arch }}
           path: |
             dist/runtime/*.deb
             dist/runtime/SHA256SUMS.runtime

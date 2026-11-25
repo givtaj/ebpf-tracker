@@ -17,59 +17,76 @@ are outside this alpha's contract. See [SECURITY.md](../SECURITY.md).
 The host kernel `7.0.0-1017-azure` is rejected because an
 [upstream regression](https://github.com/actions/runner-images/issues/15003)
 silently drops syscall events outside one CPU. Changing the container image
-does not fix its host kernel. Use a fixed Linux host; the release CI temporarily
-uses GitHub Actions `runs-on: ubuntu-22.04` with the full capture assertions.
+does not fix its host kernel. Use a fixed Linux host. Native release gates use
+GitHub Actions `ubuntu-22.04` for amd64 and `ubuntu-22.04-arm` for arm64, with
+the same full capture assertions.
 
 ## Obtain the package
 
-Download the matching runtime `.deb` and `SHA256SUMS` from the
-[GitHub release](https://github.com/givtaj/ebpf-tracker/releases). The published
-runtime package targets amd64. On Linux, verify the files you downloaded with
-`sha256sum --check --ignore-missing SHA256SUMS`. If the desired release or
-architecture has no package yet, build it from this checkout. The builder
-compiles inside Bookworm and exports a `.deb`; it does not install anything
-on your host:
+The alpha.3 release gates a runtime `.deb` for each native Linux architecture:
+
+| Application image and Docker host | Runtime package suffix |
+| --- | --- |
+| Linux x86_64 / amd64 | `_amd64.deb` |
+| Linux AArch64 / arm64, including a native Apple Silicon Docker VM | `_arm64.deb` |
+
+Select the architecture of the **application image and native Docker host**,
+not the machine running your editor. Emulated cross-architecture live tracing
+is outside this release's validation. Each package must pass its own native
+installed-package gate; a successful cross-build alone is insufficient.
+
+After the assets are available on the
+[GitHub release](https://github.com/givtaj/ebpf-tracker/releases/tag/v0.2.0-alpha.3),
+run this from your application's Docker build context. Set `runtime_arch` to
+`arm64` for a native ARM64 image/engine, or leave `amd64` for native x86_64:
 
 ```bash
-# For an x86_64 Linux Docker host:
-bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runtime
-
-# For an arm64 Linux Docker host or an Apple Silicon Docker VM, use instead:
-# bash scripts/build-runtime-deb.sh --platform linux/arm64 --output-dir dist/runtime
-
-(cd dist/runtime && shasum -a 256 -c SHA256SUMS.runtime)
-```
-
-Local source builds produce
-`ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb` (or `_arm64.deb`). The published
-amd64 download is named `ebpf-tracker-runtime_0.2.0-alpha.2_amd64.deb` because
-GitHub rewrites `~` in asset names. Both contain Debian package version
-`0.2.0~alpha.2`; the agent prints `0.2.0-alpha.2`.
-Select the architecture of the **application image**, not the machine running
-your editor. Published package support depends on passing that architecture's
-live acceptance gate; a successful cross-build alone is insufficient.
-
-For the amd64 release, run this from your application's Docker build context
-on Linux (after the release assets are available):
-
-```bash
-mkdir -p vendor
 (
-  set -eu
+  set -euo pipefail
+  runtime_arch=amd64
+  case "$runtime_arch" in
+    amd64|arm64) ;;
+    *) printf 'Unsupported runtime architecture: %s\n' "$runtime_arch" >&2; exit 1 ;;
+  esac
+  mkdir -p vendor
   cd vendor
-  release=https://github.com/givtaj/ebpf-tracker/releases/download/v0.2.0-alpha.2
-  package=ebpf-tracker-runtime_0.2.0-alpha.2_amd64.deb
+  release=https://github.com/givtaj/ebpf-tracker/releases/download/v0.2.0-alpha.3
+  package="ebpf-tracker-runtime_0.2.0-alpha.3_${runtime_arch}.deb"
   curl --fail --location --output "$package" "$release/$package"
   curl --fail --location --output SHA256SUMS "$release/SHA256SUMS"
-  sha256sum --check --ignore-missing SHA256SUMS
+  checksum="$(awk -v name="$package" '$2 == name { print }' SHA256SUMS)"
+  test -n "$checksum" || { printf 'Package missing from SHA256SUMS\n' >&2; exit 1; }
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s\n' "$checksum" | sha256sum --check -
+  else
+    printf '%s\n' "$checksum" | shasum -a 256 --check -
+  fi
   cp "$package" ebpf-tracker-runtime.deb
 )
 ```
 
-For a source build, copy the verified package into that build context as
-`vendor/ebpf-tracker-runtime.deb`. Pin and checksum the package in CI. The
-launcher is a different executable from the host `ebpf-tracker` CLI, which
-orchestrates Docker and provides replay.
+This checks the selected package against the original release manifest without
+rewriting it. The checksum tool fallback supports macOS download hosts.
+
+To build from this checkout instead, use one of these native platforms. The
+builder compiles inside Bookworm and exports a `.deb`; it installs nothing on
+your host:
+
+```bash
+bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runtime
+# For a native arm64 Docker host, use --platform linux/arm64 instead.
+(cd dist/runtime && shasum -a 256 -c SHA256SUMS.runtime)
+```
+
+Local builds use Debian-style names such as
+`ebpf-tracker-runtime_0.2.0~alpha.3_arm64.deb`. Release downloads use
+`ebpf-tracker-runtime_0.2.0-alpha.3_arm64.deb` because GitHub rewrites `~` in
+asset names. The same rule applies to amd64. Both forms contain Debian package
+version `0.2.0~alpha.3`; the agent prints `0.2.0-alpha.3`. Copy a verified source
+build into the application context as `vendor/ebpf-tracker-runtime.deb`.
+
+Pin and checksum the package in CI. The launcher is different from the host
+`ebpf-tracker` CLI, which orchestrates Docker and provides replay.
 
 ## Add it to the application image
 
@@ -185,7 +202,9 @@ cleanup or database-volume removal as part of installing the tracker.
 Tests must send requests to the traced API. A test harness that launches its
 own server does not test this container. Roots' existing Compose HTTP smoke
 uses `roots-cli api smoke`; its separate testkit starts another API process.
-Roots is a reference configuration only; this project does not modify it.
+Roots supplied the reference configuration. Its separately authorized
+[source-built ARM64 pilot](./roots-pilot-2026-11-25.md) exercised a read-only
+health request; the release gates use only the standalone synthetic fixture.
 
 ## Try the isolated Axum example
 
@@ -195,7 +214,7 @@ capture contract:
 
 ```bash
 bash scripts/in-container-smoke.sh \
-  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb
+  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.3_amd64.deb
 ```
 
 Use the `_arm64.deb` package for a native arm64 Docker engine. The fixture does
@@ -213,6 +232,10 @@ ebpf-tracker replay traces/events.jsonl
 Replay needs Node.js on the viewing machine, but does not need Docker or the
 application to be running. The runtime package itself needs neither Node nor
 Cargo inside the application image.
+
+Prebuilt host CLI archives target Linux x86_64 and Intel macOS. The ARM64
+runtime package does not supply an ARM64 host CLI; use the source installation
+above when that is the viewer host's architecture.
 
 The four probes report process execution, file opens, writes, and connection
 attempts for the launched process tree. They do not capture HTTP bodies,

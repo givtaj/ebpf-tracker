@@ -1,9 +1,10 @@
 # Axum In-Container Alpha
 
-Release line: `0.2.0-alpha.2`. The selected workflow installs a
+Release line: `0.2.0-alpha.3`. The selected workflow installs a
 native tracing agent inside an existing Bookworm application image and starts
 the Axum API through that agent. Roots supplied the reference Docker layout;
-no Roots files, services, credentials, or data are changed.
+release gates use a separate synthetic fixture. A separately authorized local
+[Roots pilot](./roots-pilot-2026-11-25.md) provides bounded source-built evidence.
 
 ## Product Outcome
 
@@ -25,15 +26,16 @@ to an already-running API or stop collection independently of the server.
   startup; missing tracing support is an error, not a silently empty capture.
 - The known-bad `7.0.0-1017-azure` host kernel is rejected; see
   [the upstream regression](https://github.com/actions/runner-images/issues/15003).
-  Live GitHub release gates use Ubuntu 22.04 until the affected runner is fixed.
+  Live release gates use native Ubuntu 22.04 runners for each architecture.
 - An existing non-root application user, with UID/GID/groups and capabilities
   managed by the launcher. The image's default Docker user remains root for
   the collector; healthcheck and exec identity must be handled explicitly.
 - Four fixed process-tree probes: `execve`, `openat`, `write`, and `connect`.
 - Application stdout/stderr separate from a newly created JSONL output file.
-- Native package builds for amd64 and arm64. The release workflow gates and
-  publishes amd64; architecture-specific live evidence is required before
-  claiming another architecture as a verified release artifact.
+- Bookworm runtime packages for native amd64 and arm64 Linux Docker hosts.
+  The alpha.3 workflow requires separate native installed-package and live
+  acceptance gates for both architectures before publication. Emulated live
+  tracing is outside the validated boundary.
 
 Use only trusted workloads on isolated development or disposable CI hosts.
 The privileged container has broad host access. Workload filtering and dropping
@@ -44,7 +46,9 @@ API capabilities are not a security sandbox. See [SECURITY.md](../SECURITY.md).
 Follow the [Dockerfile, Compose, and CI installation guide](./in-container.md).
 The repository supplies a standalone synthetic Axum/PostgreSQL example and a
 smoke test that installs the actual runtime package. The existing host CLI
-provides replay. `attach docker` remains a scaffold and is not used here.
+provides replay. Its prebuilt archives target Linux x86_64 and Intel macOS;
+ARM64 runtime-package support does not add an ARM64 host CLI archive.
+`attach docker` remains a scaffold and is not used here.
 
 ## Acceptance Required Before Publication
 
@@ -62,9 +66,11 @@ provides replay. `attach docker` remains a scaffold and is not used here.
 - Pass workspace regression checks, offline replay, and the strict Linux
   release gates; verify runtime package metadata, architecture, and checksums.
 
-Current evidence is recorded in [alpha validation](./alpha-validation.md) and TASKLOG.md.
-A fixture passing does not establish real Roots acceptance or HTTP request
-tracing. Roots application integration remains a separate opt-in task.
+Current publication status and exact-artifact evidence are recorded in
+[alpha validation](./alpha-validation.md) and TASKLOG.md. The earlier
+[source-built ARM64 Roots pilot](./roots-pilot-2026-11-25.md) established health,
+scoped process activity, shutdown and replay for that local setup. It does not
+replace alpha.3's tagged-package gates or establish HTTP request attribution.
 
 ## Evidence Limits
 

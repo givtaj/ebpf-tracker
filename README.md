@@ -1,6 +1,6 @@
 # ebpf-tracker
 
-> **Axum-on-Docker alpha: `0.2.0-alpha.2`.** Trace one trusted Rust API
+> **Axum-on-Docker alpha: `0.2.0-alpha.3`.** Trace one trusted Rust API
 > service by installing an agent inside its existing Bookworm image.
 > See [release downloads](https://github.com/givtaj/ebpf-tracker/releases),
 > the [installation guide](./docs/in-container.md), and [alpha scope](./docs/alpha-scope.md).
@@ -11,12 +11,18 @@ Bookworm runtime package, set the agent as the entrypoint, and enable the
 tracing Compose override. Your API keeps its image's libraries, network,
 environment, ports, and database connections. The collector runs as root;
 the agent starts the API as its existing non-root user with capabilities dropped.
+The alpha.3 release requires native validation of both Bookworm **amd64** and
+**arm64** runtime packages. Select the package for the application's native
+Linux architecture; see [release verification](./docs/alpha-validation.md) for
+publication status and evidence.
 
 The alpha records one API process lifetime during a bounded development or CI
 test session, then saves its capture for local replay. Stopping the traced
 container stops the API and flushes the capture. The current probes do not
 provide HTTP route, request ID, latency, or per-request attribution. The example
-uses a separate synthetic Axum/PostgreSQL stack; Roots itself is unchanged.
+uses a separate synthetic Axum/PostgreSQL stack. A bounded, source-built ARM64
+[Roots pilot](./docs/roots-pilot-2026-11-25.md) separately verified health,
+process activity, shutdown, and replay.
 
 The existing host `ebpf-tracker` CLI also wraps commands in its own managed
 Docker runtime and provides offline replay. `attach docker` remains a scaffold;
@@ -59,12 +65,13 @@ the full trust and data boundary.
 
 For the focused API-container workflow, follow the
 [Dockerfile, Compose, and CI installation guide](./docs/in-container.md).
-Build the runtime package and run its isolated live acceptance example:
+Use a matching release package, or build it and run its isolated live
+acceptance example on the same native architecture:
 
 ```bash
 bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runtime
 bash scripts/in-container-smoke.sh \
-  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.2_amd64.deb
+  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.3_amd64.deb
 ```
 
 For a native arm64 Docker engine, use `linux/arm64` and the `_arm64.deb` package.
@@ -93,6 +100,10 @@ image. The bundled Rust demos also require Cargo on the host for their cleanup
 step, including when using a downloaded binary. Replay and the dashboard need
 Node.js on the host; replay does not start Docker. Application and build output stays on `stderr`; normalized
 trace records go to the JSONL file. The demo enables all four probes.
+
+Prebuilt host CLI archives target Linux x86_64 and Intel macOS. The ARM64
+runtime `.deb` installs the in-container agent; it is not an ARM64 host CLI.
+Build the host CLI from source on other host architectures.
 
 For your own project, copy [`ebpf-tracker.toml.example`](./ebpf-tracker.toml.example)
 to `ebpf-tracker.toml`, then run:

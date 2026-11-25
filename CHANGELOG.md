@@ -4,6 +4,21 @@ This file tracks notable repo changes in progress on this branch.
 
 ## Unreleased
 
+## v0.2.0-alpha.3 - 2026-11-25
+
+### Added
+
+- Add a Bookworm ARM64 runtime package alongside amd64, with native architecture-specific package installation, Axum/PostgreSQL capture, isolation, lifecycle and offline replay gates in CI and releases.
+
+### Changed
+
+- Verify each architecture's original package manifest separately, then assemble both GitHub-safe runtime filenames and the two existing host CLI archives into one complete checksum manifest before publication.
+- Update Docker installation instructions to select amd64 or ARM64 explicitly while retaining the trusted development/CI, privileged-container and host-PID requirements.
+
+### Documentation
+
+- Record the [existing Roots development pilot](docs/roots-pilot-2026-11-25.md): an ARM64 build from the alpha.2 tag passed read-only health verification, scoped process capture, shutdown and offline replay. Logical database hashes matched and the initial service state was restored; the public report excludes local operational details and raw traces.
+
 ## v0.2.0-alpha.2 - 2026-10-28
 
 ### Fixed

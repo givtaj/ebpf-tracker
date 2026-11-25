@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  # Live gates use Ubuntu 22.04 while actions/runner-images#15003 affects 24.04.
+  # Live gates use native Ubuntu 22.04 hosts while actions/runner-images#15003 affects 24.04.
   # Build the host CLI on the same baseline for its glibc compatibility.
   validate:
     name: verify Linux release and tracer runtime
@@ -136,17 +136,39 @@ jobs:
           retention-days: 7
 
   runtime-package:
-    name: build and verify installed runtime package (amd64)
-    runs-on: ubuntu-22.04
+    name: build and verify installed runtime package (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     needs: validate
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: amd64
+          - runner: ubuntu-22.04-arm
+            arch: arm64
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Require a native host and Docker engine
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          host_arch="$(uname -m)"
+          docker_arch="$(docker info --format '{{.Architecture}}')"
+          case "${host_arch}" in x86_64) host_arch=amd64 ;; aarch64) host_arch=arm64 ;; esac
+          case "${docker_arch}" in x86_64) docker_arch=amd64 ;; aarch64) docker_arch=arm64 ;; esac
+          [[ "${host_arch}" == "${EXPECTED_ARCH}" && "${docker_arch}" == "${EXPECTED_ARCH}" ]]
+          [[ -z "${DOCKER_DEFAULT_PLATFORM:-}" || "${DOCKER_DEFAULT_PLATFORM}" == "linux/${EXPECTED_ARCH}" ]]
+          uname -a
+          docker info --format '{{.OSType}}/{{.Architecture}} {{.KernelVersion}}'
+
       - name: Build and install-check Bookworm runtime package
-        run: bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runtime
+        run: bash scripts/build-runtime-deb.sh --platform linux/${{ matrix.arch }} --output-dir dist/runtime
 
       - name: Verify package metadata and contents
         env:
@@ -156,8 +178,8 @@ jobs:
           version="${RELEASE_TAG#v}"
           debian_version="$(debian_release_version "${version}")"
           bash scripts/verify-runtime-package.sh \
-            --deb "dist/runtime/ebpf-tracker-runtime_${debian_version}_amd64.deb" \
-            --expected-version "${version}" --arch amd64
+            --deb "dist/runtime/ebpf-tracker-runtime_${debian_version}_${{ matrix.arch }}.deb" \
+            --expected-version "${version}" --arch ${{ matrix.arch }}
 
       - name: Verify live installed agent with Axum and PostgreSQL
         env:
@@ -167,7 +189,7 @@ jobs:
           version="${RELEASE_TAG#v}"
           debian_version="$(debian_release_version "${version}")"
           bash scripts/in-container-smoke.sh \
-            --package "${PWD}/dist/runtime/ebpf-tracker-runtime_${debian_version}_amd64.deb" \
+            --package "${PWD}/dist/runtime/ebpf-tracker-runtime_${debian_version}_${{ matrix.arch }}.deb" \
             --output-dir "${RUNNER_TEMP}/runtime-package-evidence"
 
       - name: Install Rust for the replay CLI
@@ -188,7 +210,7 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: runtime-package-evidence-${{ needs.validate.outputs.release_tag }}-amd64
+          name: runtime-package-evidence-${{ needs.validate.outputs.release_tag }}-${{ matrix.arch }}
           path: ${{ runner.temp }}/runtime-package-evidence
           if-no-files-found: ignore
           retention-days: 7
@@ -196,7 +218,7 @@ jobs:
       - name: Upload verified runtime package
         uses: actions/upload-artifact@v7
         with:
-          name: runtime-package-${{ needs.validate.outputs.release_tag }}-amd64
+          name: runtime-package-${{ needs.validate.outputs.release_tag }}-${{ matrix.arch }}
           path: |
             dist/runtime/*.deb
             dist/runtime/SHA256SUMS.runtime
@@ -238,13 +260,14 @@ jobs:
           RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
         run: bash release-source/scripts/verify-release-artifacts.sh --dist dist --tag "${RELEASE_TAG}" --write-checksums
 
-      - name: Download verified runtime package
+      - name: Download both verified runtime packages without merging manifests
         uses: actions/download-artifact@v7
         with:
-          name: runtime-package-${{ needs.validate.outputs.release_tag }}-amd64
-          path: dist
+          pattern: runtime-package-${{ needs.validate.outputs.release_tag }}-*
+          path: runtime-artifacts
+          merge-multiple: false
 
-      - name: Verify runtime package and include its checksum
+      - name: Verify both runtime packages and include their checksums
         env:
           RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
         run: |
@@ -252,20 +275,27 @@ jobs:
           source release-source/scripts/release-version.sh
           version="${RELEASE_TAG#v}"
           debian_version="$(debian_release_version "${version}")"
-          local_package="dist/ebpf-tracker-runtime_${debian_version}_amd64.deb"
-          public_package="dist/ebpf-tracker-runtime_${version}_amd64.deb"
-          bash release-source/scripts/verify-runtime-package.sh \
-            --deb "${local_package}" \
-            --expected-version "${version}" --arch amd64
-          # GitHub rewrites '~' in release asset names. Rename before hashing;
-          # the package bytes and its internal Debian Version stay unchanged.
-          if [[ "${local_package}" != "${public_package}" ]]; then
-            mv "${local_package}" "${public_package}"
-          fi
-          bash release-source/scripts/verify-runtime-package.sh \
-            --deb "${public_package}" \
-            --expected-version "${version}" --arch amd64 --write-checksums
-          cat dist/SHA256SUMS.runtime >> dist/SHA256SUMS
+          for arch in amd64 arm64; do
+            artifact_dir="runtime-artifacts/runtime-package-${RELEASE_TAG}-${arch}"
+            local_name="ebpf-tracker-runtime_${debian_version}_${arch}.deb"
+            public_name="ebpf-tracker-runtime_${version}_${arch}.deb"
+            [[ -s "${artifact_dir}/${local_name}" && -s "${artifact_dir}/SHA256SUMS.runtime" ]]
+            # Verify the original architecture-specific manifest before assembly.
+            expected_checksum="$(cd "${artifact_dir}" && sha256sum "${local_name}")"
+            [[ "$(cat "${artifact_dir}/SHA256SUMS.runtime")" == "${expected_checksum}" ]]
+            bash release-source/scripts/verify-runtime-package.sh \
+              --deb "${artifact_dir}/${local_name}" \
+              --expected-version "${version}" --arch "${arch}"
+            # GitHub rewrites '~': hash the public filename, preserving package bytes.
+            cp "${artifact_dir}/${local_name}" "dist/${public_name}"
+            bash release-source/scripts/verify-runtime-package.sh \
+              --deb "dist/${public_name}" \
+              --expected-version "${version}" --arch "${arch}"
+            (cd dist && sha256sum "${public_name}") >> dist/SHA256SUMS
+          done
+          packages=(dist/ebpf-tracker-runtime_*.deb)
+          [[ "${#packages[@]}" -eq 2 && "$(wc -l < dist/SHA256SUMS)" -eq 4 ]]
+          (cd dist && sha256sum --check --strict SHA256SUMS)
 
       - name: Verify installed Linux archive outside the checkout
         env:
@@ -282,6 +312,7 @@ jobs:
           path: |
             dist/ebpf-tracker-${{ needs.validate.outputs.release_tag }}-*.tar.gz
             dist/ebpf-tracker-runtime_*_amd64.deb
+            dist/ebpf-tracker-runtime_*_arm64.deb
             dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 7
@@ -311,6 +342,7 @@ jobs:
           files: |
             dist/ebpf-tracker-${{ needs.validate.outputs.release_tag }}-*.tar.gz
             dist/ebpf-tracker-runtime_*_amd64.deb
+            dist/ebpf-tracker-runtime_*_arm64.deb
             dist/SHA256SUMS
           fail_on_unmatched_files: true
           body_path: .github/release-notes.md
