@@ -1,9 +1,13 @@
 # ebpf-tracker
 
-> **Axum-on-Docker alpha: `0.2.0-alpha.3`.** Trace one trusted Rust API
+> **Axum-on-Docker alpha: `0.2.0-alpha.4` in development.** Trace one trusted Rust API
 > service by installing an agent inside its existing Bookworm image.
 > See [release downloads](https://github.com/givtaj/ebpf-tracker/releases),
 > the [installation guide](./docs/in-container.md), and [alpha scope](./docs/alpha-scope.md).
+
+The published release is still **alpha.3**. This checkout adds a focused
+[missing-file debugging example](./examples/axum-container/README.md) for alpha.4:
+inspect a failed file open, its path, process and error in a saved capture.
 
 The in-container `ebpf-tracker-agent` starts your API, records selected syscall
 activity from its process tree, and writes replayable JSONL. Install the
@@ -71,7 +75,7 @@ acceptance example on the same native architecture:
 ```bash
 bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runtime
 bash scripts/in-container-smoke.sh \
-  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.3_amd64.deb
+  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.4_amd64.deb
 ```
 
 For a native arm64 Docker engine, use `linux/arm64` and the `_arm64.deb` package.

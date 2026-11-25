@@ -3,7 +3,9 @@
 `ebpf-tracker` is an experimental alpha for trusted Rust and Node.js development
 workflows. The most mature behavior is local command-session tracing and
 replay. It is not a production agent, security sandbox, or full profiler.
-The `0.2.0-alpha.3` target is the [Axum-on-Docker workflow](./alpha-scope.md).
+The `0.2.0-alpha.4` development target is the [Axum-on-Docker workflow](./alpha-scope.md).
+Alpha.3 remains the published release; use the source-built runtime and replay
+CLI for alpha.4 file-open results and missing-file debugging.
 Install `ebpf-tracker-agent` inside a Bookworm API image using the
 [in-container guide](./in-container.md). That native launcher is distinct from
 the host CLI documented here; it does not invoke Docker. The commands below

@@ -704,7 +704,7 @@ mod tests {
         let output = Arc::new(Mutex::new(permissions::create_capture(&path).unwrap()));
         let (sender, receiver) = mpsc::channel();
         read_collector(
-            format!("{READY}\n{SCOPE}123\nopenat comm=api pid=124 file=/app/data\n").as_bytes(),
+            format!("{READY}\n{SCOPE}123\nopenat comm=api pid=124 return_value=-2 errno=2 file=/app/missing.txt\n").as_bytes(),
             output,
             sender,
         );
@@ -719,7 +719,14 @@ mod tests {
             .map(|line| serde_json::from_str(line).unwrap())
             .collect();
         assert_eq!(records.len(), 1);
-        assert!(matches!(records[0], StreamRecord::Syscall { .. }));
+        assert!(matches!(
+            records[0],
+            StreamRecord::Syscall {
+                return_value: Some(-2),
+                errno: Some(2),
+                ..
+            }
+        ));
     }
 
     #[test]

@@ -14,6 +14,12 @@ This file tracks user-requested work and delegated agent tasks in progress on th
 
 ### Focused Alpha Release
 
+- 2026-11-25 | Task: Implement focused alpha.4 missing-file debugging in the synthetic Axum Docker example; preserve Roots and its database | Owner: Codex | Status: completed; 138 workspace tests, 14 Linux agent tests, native ARM64 installed-package capture and offline replay PASS; four ENOENT failures and five successful controls verified; native amd64 CI/publication remain pending | Output: `docs/alpha-validation.md`, Axum example, collector and replay
+- 2026-11-25 | Task: Add scoped file-open results and backwards-compatible event parsing for alpha.4 | Agent: alpha4-open-results | Status: completed; TID correlation, return values, errno, legacy unknown outcomes and focused tests PASS | Output: `subagents/alpha4-open-results.md`
+- 2026-11-25 | Task: Add the synthetic Axum missing-file route and installed-package acceptance assertions | Agent: alpha4-fixture | Status: completed; bounded concurrent requests, independent kernel assertions and successful controls PASS; explicit worker identity fixed after live validation | Output: `subagents/alpha4-fixture.md`
+- 2026-11-25 | Task: Display file-open failures and legacy unknown outcomes in offline replay | Agent: alpha4-viewer | Status: completed; four viewer tests, actual capture replay and browser check PASS | Output: `subagents/alpha4-viewer.md`
+- 2026-11-25 | Task: Cross-review alpha.4 collection, fixture acceptance and replay semantics | Agents: alpha4-open-results, alpha4-viewer | Status: completed; misleading journey labels and concurrency wording corrected; failure-row layout fixed after browser inspection | Output: independent review notes and validated corrections
+
 - 2026-11-25 | Task: Review and prepare the completed alpha.3 Roots pilot report for GitHub publication | Owner: Codex | Status: completed; four-document publication candidate reviewed for accuracy, privacy and links; private evidence and unrelated historical edit excluded | Output: four documentation files
 - 2026-11-25 | Task: Independently review the pilot documentation publication diff for scope, accuracy and privacy | Agent: pilot-report-publish-review | Status: completed; retained evidence and resolved bridge explanation match the public diff; no private-data disclosures found | Output: documentation publication review
 

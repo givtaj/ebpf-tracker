@@ -1,5 +1,11 @@
 # Trace an API inside its Docker container
 
+The download recipe below installs published **alpha.3**. The **alpha.4
+development candidate** adds file-open results and a
+[missing-file debugging walkthrough](../examples/axum-container/README.md).
+Build the runtime and replay CLI from this checkout to try that scenario;
+alpha.3 captures do not include file-open outcomes.
+
 The `ebpf-tracker-runtime` Debian package installs `ebpf-tracker-agent` and its
 Bookworm dependencies. The agent is the container entrypoint: it starts
 bpftrace, launches your API as its existing non-root user, and saves normalized
@@ -79,10 +85,11 @@ bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runti
 ```
 
 Local builds use Debian-style names such as
-`ebpf-tracker-runtime_0.2.0~alpha.3_arm64.deb`. Release downloads use
+`ebpf-tracker-runtime_0.2.0~alpha.4_arm64.deb` for this development checkout. Published alpha.3 downloads use
 `ebpf-tracker-runtime_0.2.0-alpha.3_arm64.deb` because GitHub rewrites `~` in
-asset names. The same rule applies to amd64. Both forms contain Debian package
-version `0.2.0~alpha.3`; the agent prints `0.2.0-alpha.3`. Copy a verified source
+asset names. The same rule applies to amd64. Published alpha.3 packages contain
+Debian version `0.2.0~alpha.3`; this source build contains `0.2.0~alpha.4` and
+the agent prints `0.2.0-alpha.4`. Copy a verified source
 build into the application context as `vendor/ebpf-tracker-runtime.deb`.
 
 Pin and checksum the package in CI. The launcher is different from the host
@@ -214,7 +221,7 @@ capture contract:
 
 ```bash
 bash scripts/in-container-smoke.sh \
-  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.3_amd64.deb
+  --package dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.4_amd64.deb
 ```
 
 Use the `_arm64.deb` package for a native arm64 Docker engine. The fixture does
@@ -237,8 +244,11 @@ Prebuilt host CLI archives target Linux x86_64 and Intel macOS. The ARM64
 runtime package does not supply an ARM64 host CLI; use the source installation
 above when that is the viewer host's architecture.
 
-The four probes report process execution, file opens, writes, and connection
-attempts for the launched process tree. They do not capture HTTP bodies,
-database contents, SQL statements, successful-I/O results, destination
+The four event kinds report process execution, file opens, writes, and connection
+attempts for the launched process tree. Alpha.4 in-container file-open records
+add return values and errno; alpha.3 and generic command captures leave these
+outcomes unknown. A successful open does not prove a successful read or write.
+The probes do not capture HTTP bodies,
+database contents, SQL statements, read/write completion, destination
 addresses, route names, request IDs, latency, or request-to-syscall causality.
 Long or whitespace-containing paths retain the shared parser's limitations.

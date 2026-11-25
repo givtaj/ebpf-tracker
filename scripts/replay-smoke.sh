@@ -28,6 +28,8 @@ done
 command -v node >/dev/null || { echo 'replay-smoke: Node.js is required' >&2; exit 1; }
 [[ -x "${tracker}" ]] || { echo "replay-smoke: build the tracker first or supply --tracker: ${tracker}" >&2; exit 1; }
 
+node --test "${repo_root}/crates/ebpf-tracker-viewer/tests/open-outcomes.test.cjs"
+
 node - "${repo_root}" "${tracker}" "${trace_file}" "${require_embedded}" <<'NODE'
 const assert = require('assert/strict');
 const fs = require('fs');
@@ -114,12 +116,37 @@ async function main() {
     for (const kind of ['open_at', 'connect', 'write']) {
       assert.ok(result.counters[kind] > 0, `saved capture replay must contain ${kind}`);
     }
+    const opens = fs.readFileSync(trace, 'utf8').split(/\r?\n/).filter(line => line.trim())
+      .map(line => JSON.parse(line)).filter(event => event.type === 'syscall' && event.kind === 'open_at');
+    const failures = opens.filter(event => Number.isSafeInteger(event.return_value) &&
+      event.return_value < 0 && event.errno === -event.return_value);
+    const successes = opens.filter(event => Number.isSafeInteger(event.return_value) &&
+      event.return_value >= 0 && event.errno === 0);
+    assert.deepEqual(result.openOutcomes, {
+      failed: failures.length, succeeded: successes.length,
+      unknown: opens.length - failures.length - successes.length,
+    }, 'replay must retain file-open outcomes, including legacy unknown results');
+    assert.deepEqual(result.recentOpenFailures.map(event => [event.file, event.pid, event.return_value, event.errno]),
+      failures.slice(-32).reverse().map(event => [event.file, event.pid, event.return_value, event.errno]),
+      'saved failure paths, processes and kernel results must survive replay');
+    for (const event of result.recentOpenFailures) {
+      assert.equal(event.open_outcome.status, 'failed');
+      if (event.errno === 2) assert.match(event.text, /ENOENT \(2\): No such file or directory/);
+    }
+    const fixtureMissing = failures.filter(event => event.file === '/data/fixture-missing-input.txt');
+    if (fixtureMissing.length) {
+      assert.equal(result.recentOpenFailures.filter(event => event.file === '/data/fixture-missing-input.txt').length,
+        fixtureMissing.length, 'the Axum missing-file failures must remain visible after shutdown');
+    }
   } else {
     assert.equal(result.counters.open_at, 2);
     assert.equal(result.counters.connect, 1);
     assert.equal(result.counters.write, 1);
     assert.ok(result.recentEvents.some(event => event.file === 'input/message.txt'));
     assert.ok(result.topProcesses.every(item => item.comm === 'session-io-demo'), 'focus filter must exclude cargo');
+    assert.deepEqual(result.openOutcomes, { succeeded: 0, failed: 0, unknown: 2 });
+    assert.ok(result.recentEvents.filter(event => event.kind === 'open_at')
+      .every(event => event.text.includes('outcome unknown')), 'legacy attempts must not imply success');
   }
   assert.equal(fs.existsSync(dockerMarker), false, 'offline replay must never invoke Docker');
   if (requireEmbedded === '1') {
