@@ -1,4 +1,56 @@
-# Native ARM64 Roots pilot — 2026-11-25
+# Roots development pilots — 2026-11-25
+
+## Published alpha.3 package: PASS
+
+The published ARM64 `v0.2.0-alpha.3` package passed a new pilot on the existing
+Roots development checkout and database. No checkout copy was made. The current
+Roots Dockerfile build instructions were used directly, with the package install
+and launcher added only to an external temporary image recipe. Roots source,
+Dockerfile, Compose configuration and normal image tags were unchanged.
+
+The runtime and macOS replay CLI were freshly downloaded from the public release.
+Their digests matched the original manifest and GitHub asset metadata. The runtime
+SHA-256 is `c902b2027e16383929caed3af31bd78241bf93dd95a964df9d84d399f286603b`.
+The installed agent reported `0.2.0-alpha.3`; this run used the published bytes,
+not the earlier source-built alpha.2 package.
+
+| Check | Observed result |
+| --- | --- |
+| Normal API command | `roots-api` through the documented launcher; existing non-root identity, capabilities dropped |
+| Read-only health | HTTP 200 and exactly `{"status":"ok"}` |
+| Capture | 36 JSONL records, 35 syscall attempts: execve 2, open_at 14, write 15, connect 4 |
+| Isolation | Only the API process and threads; independent curl and PostgreSQL excluded |
+| Shutdown | Exit 0; API, collector, helper and supervisor process identities reaped; complete JSONL flush |
+| Offline replay | Actual Roots capture passed with the fresh public alpha.3 CLI and embedded viewer outside the checkout, Docker blocked |
+| Existing edits | All 2,259 recorded tracked/untracked file hashes, 104 API/config inputs, Git HEAD, index and staged/unstaged diffs unchanged |
+| Database | Streamed schema/data dumps, including ownership and ACL statements, matched before API startup and after shutdown; contents were never saved |
+| Restoration | Existing database cleanly shut down before and after; initial absence of dev containers restored; normal image tags and volumes retained |
+
+The unchanged guide worked without a transport workaround. A temporary Compose
+override selected the existing project, database bind and application account,
+with privileged mode, host PID namespace and a fresh trace directory. Only the
+pilot-owned containers and new labelled network were removed. No migrations,
+seeds, resets, restores or modifying application requests ran.
+
+Database preservation means logical schema/data/ownership/ACL equality across
+the API run; normal PostgreSQL startup and shutdown update physical storage.
+A follow-up read-only investigation explained the default bridge ID change during
+preparation. Docker Desktop had stopped its VM in
+[Resource Saver mode](https://docs.docker.com/desktop/use-desktop/resource-saver/),
+and served the baseline network listing from its cache. The read-only database
+control-inspection container woke the VM; the exact daemon's
+[startup code](https://github.com/moby/moby/blob/464cd50c3d9e92877d56940ea160de6fca7bea23/daemon/daemon_unix.go#L877)
+recreated the default bridge before the image build or Roots startup. No API
+request deleted the default bridge. The initial network-ID mismatch is retained;
+the network set immediately before and after the live run matched. No network
+repair or changes to Roots/database were made during the investigation.
+
+This closes published-package acceptance for the bounded Roots health workflow.
+Other application routes and HTTP request-to-syscall attribution were not tested.
+Private operational evidence and raw traces stay local under
+`output/roots-alpha3-pilot-2026-11-25/`; no Roots data is included here.
+
+## Earlier source-built alpha.2 pilot
 
 A bounded local integration pilot passed using `ebpf-tracker-agent` built from
 `v0.2.0-alpha.2` (`b7606456d532cc4f71ba8815a35491a2217d9fee`). The launcher
@@ -9,7 +61,7 @@ This was a **source-built ARM64 runtime**, not a published ARM64 package. The
 published alpha.2 runtime is amd64-only. The alpha.3 release adds separate
 native architecture gates; this pilot does not replace their package validation.
 
-## Scope and environment
+### Scope and environment
 
 The pilot used the existing Roots development checkout and database, without
 creating another checkout or editing application source or persistent Compose
@@ -24,7 +76,7 @@ directory. Only the API and its existing database dependency were started.
 Raw traces, credentials, sensitive environment values, database contents and local
 operational receipts are not part of this public report.
 
-## Results
+### Results
 
 | Check | Observed result |
 | --- | --- |
@@ -45,7 +97,7 @@ The source-built runtime package was
 This identifies the historical pilot build; use the selected release's public
 assets and checksum manifest for installation.
 
-## Adjustments and preservation limits
+### Adjustments and preservation limits
 
 Two original Dockerfile builds failed because Debian repository HTTP
 connections were refused or timed out. The temporary recipe used HTTPS and a

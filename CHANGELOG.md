@@ -4,6 +4,12 @@ This file tracks notable repo changes in progress on this branch.
 
 ## Unreleased
 
+### Verification
+
+- Explain the pilot's default Docker bridge ID change: the read-only preparation container woke Docker Desktop from Resource Saver mode, and daemon startup recreated its default bridge; no Roots/database or network changes were made during investigation.
+
+- Verify the published alpha.3 ARM64 runtime on the existing Roots development setup: read-only health, capture, shutdown and public-CLI replay pass; current edits and logical database contents are preserved, with initial service state restored. See the [pilot receipt](docs/roots-pilot-2026-11-25.md).
+
 ## v0.2.0-alpha.3 - 2026-11-25
 
 ### Added

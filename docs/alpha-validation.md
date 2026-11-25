@@ -68,6 +68,17 @@ run covers ARM64; amd64 live acceptance is from native tagged CI. There is no
 ARM64 host CLI archive, production acceptance or HTTP request attribution.
 The earlier Roots pilot remains separately scoped, source-built alpha.2 evidence.
 
+## Later published-package Roots pilot — 2026-11-25
+
+The separately requested [existing Roots development pilot](roots-pilot-2026-11-25.md)
+passed with the freshly downloaded ARM64 alpha.3 runtime and public replay CLI.
+Read-only health returned HTTP 200; scoped capture, clean shutdown and offline
+replay passed. Recorded files and Git edits were unchanged, logical database
+schema/data/ownership/ACL hashes matched, and the initial stopped service state
+was restored. The linked receipt records the scope and explains the default
+bridge recreation caused by Docker Desktop waking from Resource Saver mode.
+No checkout copy or Roots source/configuration edits were made.
+
 ## Historical alpha.1/alpha.2 validation — 2026-10-28
 
 Both local arm64 and native amd64 runtime packages passed real installation
