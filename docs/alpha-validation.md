@@ -135,3 +135,25 @@ Roots files, service configuration, databases, or running services were used
 or changed. This result does not establish real Roots compatibility, HTTP
 request attribution, production suitability, private-PID-namespace support,
 or a least-privilege Docker configuration.
+
+## Later local Roots pilot — 2026-11-25
+
+The separately authorized [existing-checkout Roots pilot](roots-pilot-2026-11-25.md)
+passed with a native ARM64 runtime built from the exact alpha.2 tag. It verified
+read-only health HTTP 200, all four scoped syscall kinds, graceful shutdown,
+process reaping, offline replay, matching logical database hashes and restoration
+of the initial development-service state. This closes the local health-workflow
+integration gate for that source-built route. The published alpha.2 runtime is
+amd64-only; this historical pilot does not replace the native ARM64 package
+gate introduced for alpha.3.
+
+## Alpha.3 release gates
+
+The alpha.3 release pipeline requires separate native amd64 (`ubuntu-22.04`)
+and ARM64 (`ubuntu-22.04-arm`) builds. Each installs its actual Bookworm package,
+runs the full synthetic Axum/PostgreSQL acceptance and replays that capture
+offline. Architecture-specific manifests remain separate until both packages
+have passed; assembly verifies their original checksums and emits public
+filenames with one combined manifest covering both runtime packages and the
+two existing host CLI archives. No emulated live run substitutes for either
+native gate. Publication remains dependent on the complete tagged workflow.
