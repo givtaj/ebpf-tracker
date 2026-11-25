@@ -17,6 +17,7 @@ This file tracks notable repo changes in progress on this branch.
 
 ### Documentation
 
+- Record alpha.3 exact-tag publication, original public asset digests, both copy-paste download recipes and fresh ARM64 installed-package capture/replay acceptance in the release validation receipt.
 - Record the [existing Roots development pilot](docs/roots-pilot-2026-11-25.md): an ARM64 build from the alpha.2 tag passed read-only health verification, scoped process capture, shutdown and offline replay. Logical database hashes matched and the initial service state was restored; the public report excludes local operational details and raw traces.
 
 ## v0.2.0-alpha.2 - 2026-10-28

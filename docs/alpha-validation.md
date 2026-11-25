@@ -1,10 +1,80 @@
-# In-container alpha validation — 2026-10-28
+# In-container alpha validation
+
+## Published alpha.3 — 2026-11-25
+
+**PASS:** [v0.2.0-alpha.3](https://github.com/givtaj/ebpf-tracker/releases/tag/v0.2.0-alpha.3)
+is a published prerelease with native Bookworm amd64 and ARM64 runtime packages,
+Linux x86_64 and Intel macOS host CLI archives, and the original `SHA256SUMS`.
+The earlier alpha.2 release remains unchanged.
+
+- Source: `b85756709ef42ea66f7af70cbf2a3c2774182aff`, merged through
+  [PR #4](https://github.com/givtaj/ebpf-tracker/pull/4). Its tree matches the
+  reviewed candidate `9b1bdd55f64cb1577663e7a1606f2d73b5b3e61f`.
+- Annotated tag object: `ca41ac56bde38656053f94c84eed2be8c6126ffe`.
+- [PR CI](https://github.com/givtaj/ebpf-tracker/actions/runs/45604813419),
+  [non-publishing rehearsal](https://github.com/givtaj/ebpf-tracker/actions/runs/45604832084),
+  and [merged main CI](https://github.com/givtaj/ebpf-tracker/actions/runs/45606042337): PASS.
+- [Exact-tag release workflow](https://github.com/givtaj/ebpf-tracker/actions/runs/45606627217):
+  all seven jobs passed on the first attempt, including publication. Both native
+  runtime gates used Linux `6.8.0-1070-azure`, with matching host and Docker
+  architectures on `ubuntu-22.04` and `ubuntu-22.04-arm`.
+- Published at `2026-11-25T11:49:45Z`; release ID `458041355`.
+
+### Public acquisition and installation
+
+All five assets were downloaded afresh through anonymous HTTPS requests.
+Every digest matched GitHub's asset metadata; all four binary digests matched
+the unmodified downloaded manifest. Both runtime packages passed the tagged
+metadata, dependency, payload, install-hook and ELF-architecture verifier.
+Both CLI archives passed the tagged archive-content verifier.
+
+The exact download recipe in the tagged [Docker/CI guide](in-container.md)
+passed for both `runtime_arch=amd64` and `runtime_arch=arm64`, including the
+copy into `vendor/ebpf-tracker-runtime.deb`. These runs selected `sha256sum`;
+the macOS `shasum` fallback passed separate focused recipe checks before
+publication. No instruction changes or checksum regeneration were needed.
+
+| Gate | Observed result |
+| --- | --- |
+| Native amd64 package | Tagged CI: clean Bookworm installation, live Axum/PostgreSQL capture, isolation, application identity, lifecycle and actual-capture replay PASS |
+| Native ARM64 package | Same tagged CI gates PASS; fresh public package also installed and exercised locally on Docker Desktop ARM64, Linux `7.0.14-linuxkit` |
+| Fresh ARM64 HTTP exercise | Health `{"ok":true}`; expected PostgreSQL answer 42, synthetic marker, file write and descendant completion |
+| Fresh ARM64 application identity | UID/GID 10001, all capabilities zero, NoNewPrivs enabled |
+| Fresh ARM64 capture | 38 JSONL records, 37 syscall attempts across execve, open_at, write and connect; unrelated container noise excluded |
+| Shutdown and failures | Graceful exit 0; workload failure 23; missing command 127; invalid privileges/user/existing output 125; forced shutdown 137; SIGINT 0; collector failure 125; lifecycle processes reaped |
+| Fresh downloaded CLI | Intel macOS archive reports `0.2.0-alpha.3`; actual ARM64 capture replay PASS on Apple Silicon macOS 26.0.1 with Node 22.20.0, embedded viewer outside checkout and Docker invocation blocked |
+| Cleanup | Fixture containers, labelled network and volumes absent after scoped cleanup |
+
+The local fixture used the unmodified scripts exported from the alpha.3 tag.
+The agent and its dependencies were installed into a clean Bookworm runtime
+layer; existing build/dependency caches were available. No Roots workload was
+used in publication verification. Local receipts are retained under
+`output/alpha3-public-verification/` and are not release assets.
+
+### Public asset digests
+
+| Asset | SHA-256 |
+| --- | --- |
+| `ebpf-tracker-runtime_0.2.0-alpha.3_amd64.deb` | `d029e5017bdc73ceebc5c33e29404a14207aba02e719bfc968aa2030ec02c0c1` |
+| `ebpf-tracker-runtime_0.2.0-alpha.3_arm64.deb` | `c902b2027e16383929caed3af31bd78241bf93dd95a964df9d84d399f286603b` |
+| `ebpf-tracker-v0.2.0-alpha.3-x86_64-apple-darwin.tar.gz` | `5f8a5223ddb2afa0daf33ea6d8e39eb43c010dc500950fac1b1a77d6577afb01` |
+| `ebpf-tracker-v0.2.0-alpha.3-x86_64-unknown-linux-gnu.tar.gz` | `e37b2857b69b8511bb776d3e264f87f03cfca8885b04bc4cd3ddb09a47419526` |
+| `SHA256SUMS` | `ca341a8cf367b096f48737a1d752de746353868b627b4bbcc7536b41808ddf60` |
+
+These checks bind the downloaded bytes to the exact-tag workflow's release
+assets and its original manifest. They establish distribution consistency;
+no detached publisher-signature verification is claimed. The fresh local live
+run covers ARM64; amd64 live acceptance is from native tagged CI. There is no
+ARM64 host CLI archive, production acceptance or HTTP request attribution.
+The earlier Roots pilot remains separately scoped, source-built alpha.2 evidence.
+
+## Historical alpha.1/alpha.2 validation — 2026-10-28
 
 Both local arm64 and native amd64 runtime packages passed real installation
 and capture tests. These results use the synthetic fixture and do not establish
 acceptance against Roots. The first section records the earlier arm64 build.
 
-## Package and environment
+### Package and environment
 
 - Version: `0.2.0-alpha.1` (`0.2.0~alpha.1` in Debian package metadata).
 - Package: `ebpf-tracker-runtime_0.2.0~alpha.1_arm64.deb`.
@@ -14,7 +84,7 @@ acceptance against Roots. The first section records the earlier arm64 build.
 - Installation checked in a clean runtime image without Cargo or rustc.
 - Package payload contains the precompiled agent and license, with no install hooks.
 
-## Results
+### Results
 
 | Check | Observed result |
 | --- | --- |
@@ -44,7 +114,7 @@ existing bpftrace exit-status cases also passed. The package check caught and
 fixed a Bash 3 versus Bash 5 tilde-expansion difference in Debian prerelease
 version conversion. Package and fixture builders are pinned to Rust 1.96.
 
-## Native amd64 investigation
+### Native amd64 investigation
 
 Initial native amd64 runs built and installed the package, but the real capture
 gate rejected missing application events. Bounded diagnostics showed that
@@ -56,7 +126,7 @@ native agent and managed command runtime reject the known-bad
 `7.0.0-1017-azure` kernel before starting a workload. Temporary diagnostics were
 removed; primary-process startup and fast-exit capture assertions remain.
 
-## Native amd64 acceptance
+### Native amd64 acceptance
 
 [CI run 40717437051](https://github.com/givtaj/ebpf-tracker/actions/runs/40717437051)
 passed all four jobs on commit `c8db19926e43853447d2949390d8bbeb774e3796`.
@@ -77,7 +147,7 @@ The CI candidate package was
 The downloaded bytes were checked against that manifest. CI retains the
 `runtime-candidate-amd64` and `in-container-alpha-evidence` artifacts.
 
-## Tagged artifact gate
+### Tagged artifact gate
 
 The `v0.2.0-alpha.1` [release run 40719860865](https://github.com/givtaj/ebpf-tracker/actions/runs/40719860865)
 passed strict validation, both platform builds, installed runtime acceptance,
@@ -99,7 +169,7 @@ noise marker snapshot was empty between truncation and rewrite. Both noise
 writers now publish by atomic rename; 4,000 concurrent read assertions passed
 without changing the capture or exclusion requirements. Final main and tag gates passed as recorded below.
 
-## Published release
+### Published release
 
 [v0.2.0-alpha.2](https://github.com/givtaj/ebpf-tracker/releases/tag/v0.2.0-alpha.2)
 is published as a GitHub prerelease from annotated tag commit
@@ -121,7 +191,7 @@ GitHub rewrites `~` in uploaded filenames. The runtime public filename is now
 without changing any binary bytes. Future release assembly applies this name
 before hashing and upload. The original alpha.1 tag remains unchanged.
 
-## Release status and limits
+### Release status and limits
 
 Publication is separately gated by tagged release validation, clean platform
 archive builds, installed-archive acceptance, runtime-package acceptance, and
@@ -156,4 +226,5 @@ offline. Architecture-specific manifests remain separate until both packages
 have passed; assembly verifies their original checksums and emits public
 filenames with one combined manifest covering both runtime packages and the
 two existing host CLI archives. No emulated live run substitutes for either
-native gate. Publication remains dependent on the complete tagged workflow.
+native gate. The complete tagged workflow passed; the public acquisition and
+installation results are recorded above.
