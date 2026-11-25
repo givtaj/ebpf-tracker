@@ -8,6 +8,10 @@ This file tracks notable repo changes in progress on this branch.
 
 - Prepare alpha.4 missing-file debugging for the synthetic Axum Docker example: completed `openat` results and errno in the in-container capture, a deterministic missing-file HTTP scenario, and readable failure evidence in offline replay. Legacy captures retain unknown outcomes; other syscall kinds remain entry-only observations.
 
+### Documentation
+
+- Retain the alpha.4 implementation reviews and local ARM64 capture/replay acceptance notes, including the corrected worker-name assertion and viewer labels.
+
 ### Verification
 
 - Explain the pilot's default Docker bridge ID change: the read-only preparation container woke Docker Desktop from Resource Saver mode, and daemon startup recreated its default bridge; no Roots/database or network changes were made during investigation.
