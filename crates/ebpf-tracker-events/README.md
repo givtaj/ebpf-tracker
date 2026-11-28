@@ -14,6 +14,7 @@ binary.
 ```text
 execve comm=<name> pid=<pid>
 openat comm=<name> pid=<pid> file=<path>
+openat comm=<name> pid=<pid> return_value=<signed-result> errno=<error-number> file=<path>
 write comm=<name> pid=<pid> bytes=<count>
 connect comm=<name> pid=<pid> fd=<fd>
 ```
@@ -28,6 +29,14 @@ connect comm=<name> pid=<pid> fd=<fd>
 Everything else is `ParsedLine::Text` and is ignored by JSONL stream helpers.
 Parsing is deliberately small and best-effort; this is not a lossless parser
 for arbitrary bpftrace or perf output.
+
+The in-container agent emits the second `openat` form once the syscall returns.
+It copies the filename at entry and pairs the result by thread ID, so concurrent
+Tokio workers do not overwrite each other's pending paths. A successful open has
+`return_value >= 0` (the returned file descriptor, including zero) and `errno=0`.
+A failed open has a negative Linux result and its positive error number, for
+example `return_value=-2 errno=2` for `ENOENT`. Partial, malformed, duplicate, or
+inconsistent result fields are rejected. Other event kinds remain entry-only.
 
 ## JSONL Contract
 
@@ -77,6 +86,20 @@ Example session record:
 A session can also carry optional `product_tagline`, `sponsor_name`,
 `sponsor_message`, and `sponsor_url` fields.
 
+Since alpha.4, completed agent `open_at` records also carry optional
+`return_value` and `errno` fields:
+
+```json
+{"type":"syscall","timestamp_unix_ms":123,"kind":"open_at","comm":"api","pid":723,"file":"/data/missing.txt","return_value":-2,"errno":2}
+```
+
+Old captures and entry-only collectors omit both fields. Their outcome is
+**unknown**, not successful. The fields survive JSON serialization and session
+aggregation. This is an operating-system file-open result; it does not establish
+an HTTP response, request attribution, file contents, or later read success.
+Other syscall events still describe attempts, and timestamps still represent
+collector parser receipt rather than kernel entry/exit times.
+
 ## Session Aggregation
 
 `build_session_trace` converts a `StreamRecord` slice into a replay/dashboard
@@ -115,8 +138,10 @@ if let Some(record) = stream_record_for_line("write comm=demo pid=7 bytes=64") {
 
 ## Limits And Trust
 
-- Fields are whitespace-delimited `key=value` pairs and are not shell-quoted or
-  escaped. Paths containing whitespace are therefore not represented losslessly.
+- Header fields are whitespace-delimited `key=value` pairs and are not shell-
+  quoted or escaped. A final `file=` field keeps its remaining line, including
+  spaces, so path text cannot overwrite an outcome. Embedded newlines and
+  collector string truncation still prevent lossless arbitrary path capture.
 - Unknown/malformed lines are ignored instead of producing structured errors.
 - Grouping uses PID plus command name; PID reuse remains possible within a long
   session.

@@ -6,7 +6,7 @@ tagged source tree and attached binary archives are the public artifacts.
 
 ## Release Line
 
-`0.2.0-alpha.3` follows the
+The `0.2.0-alpha.4` release line follows the
 [Axum-on-Docker alpha contract](./docs/alpha-scope.md), using Roots as the
 reference service. The selected integration installs the native agent inside
 the API image. The isolated Axum/PostgreSQL acceptance must pass against the
@@ -20,7 +20,7 @@ tag, workflow and downloaded-artifact results in [alpha validation](./docs/alpha
 
 - Keep the workspace version in [Cargo.toml](./Cargo.toml) on the release line.
 - Use annotated `vMAJOR.MINOR.PATCH` tags, or prereleases such as
-  `v0.2.0-alpha.3`. Supported prerelease channels are `alpha.N`, `beta.N`, and
+  `v0.2.0-alpha.4`. Supported prerelease channels are `alpha.N`, `beta.N`, and
   `rc.N`, with no leading zeroes in numeric components.
 - Prerelease tags are marked as prereleases on GitHub; do not promote an alpha
   to a stable release.
@@ -52,14 +52,14 @@ loopback interface:
 
 ```bash
 bash scripts/release-check.sh \
-  --expected-version 0.2.0-alpha.3 \
+  --expected-version 0.2.0-alpha.4 \
   --with-runtime-smoke \
   --with-demo-smoke \
   --with-isolation-smoke \
   --with-customer-ux
 ```
 
-Replace `0.2.0-alpha.3` with the version being released. This gate verifies formatting,
+Replace `0.2.0-alpha.4` with the version being released. This gate verifies formatting,
 the locked workspace tests and builds, CLI discovery, a real traced workload,
 descendant capture and unrelated-process exclusion, and all supported customer
 journeys. `--with-customer-ux` is strict: a missing prerequisite or skipped
@@ -74,12 +74,13 @@ runtime_arch=amd64 # Set arm64 on the native ARM64 host.
 case "$runtime_arch" in amd64|arm64) ;; *) exit 1 ;; esac
 bash scripts/build-runtime-deb.sh --platform "linux/$runtime_arch" --output-dir dist/runtime
 bash scripts/in-container-smoke.sh \
-  --package "dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.3_${runtime_arch}.deb"
+  --package "dist/runtime/ebpf-tracker-runtime_0.2.0~alpha.4_${runtime_arch}.deb"
 ```
 
-Both architecture gates are mandatory for alpha.3. Each runtime package must
+Both architecture gates are mandatory for alpha.4. Each runtime package must
 be built on Bookworm, installed in a clean image without Cargo, and pass live
-capture and offline replay. CI uses native `ubuntu-22.04` amd64 and
+capture and offline replay, including the missing-file HTTP failure, kernel
+`ENOENT` result and successful-open control. CI uses native `ubuntu-22.04` amd64 and
 `ubuntu-22.04-arm` arm64 runners. Publication waits for both; do not replace a
 missing or failed native gate with an emulated run.
 
@@ -123,7 +124,7 @@ git tag -a vX.Y.Z -m "ebpf-tracker vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
-For this candidate use `v0.2.0-alpha.3` in place of `vX.Y.Z`.
+For this release use `v0.2.0-alpha.4` in place of `vX.Y.Z`.
 
 6. Wait for every `release` workflow job to pass: strict validation, both native runtime-package gates, both CLI platform builds, asset assembly, and publication.
 7. Download the public assets afresh, verify their checksums, and confirm the release notes describe the exact supported architectures.
@@ -138,8 +139,8 @@ The workflow requires both CLI archives, both Bookworm runtime packages, and
 
 - `x86_64-unknown-linux-gnu`
 - `x86_64-apple-darwin`
-- `ebpf-tracker-runtime_0.2.0-alpha.3_amd64.deb`
-- `ebpf-tracker-runtime_0.2.0-alpha.3_arm64.deb`
+- `ebpf-tracker-runtime_0.2.0-alpha.4_amd64.deb`
+- `ebpf-tracker-runtime_0.2.0-alpha.4_arm64.deb`
 
 The CLI targets remain Linux x86_64 and Intel macOS. An ARM64 runtime `.deb`
 does not establish availability of an ARM64 host CLI archive.
@@ -151,11 +152,11 @@ locally assembled assets without replacing the supplied checksums:
 ```bash
 bash scripts/verify-release-artifacts.sh \
   --dist dist \
-  --tag v0.2.0-alpha.3
+  --tag v0.2.0-alpha.4
 for runtime_arch in amd64 arm64; do
   bash scripts/verify-runtime-package.sh \
-    --deb "dist/ebpf-tracker-runtime_0.2.0-alpha.3_${runtime_arch}.deb" \
-    --expected-version 0.2.0-alpha.3 --arch "$runtime_arch"
+    --deb "dist/ebpf-tracker-runtime_0.2.0-alpha.4_${runtime_arch}.deb" \
+    --expected-version 0.2.0-alpha.4 --arch "$runtime_arch"
 done
 (cd dist && sha256sum -c SHA256SUMS)
 ```

@@ -31,6 +31,8 @@ pub struct ParsedEvent {
     pub file: Option<String>,
     pub bytes: Option<u64>,
     pub fd: Option<i32>,
+    pub return_value: Option<i64>,
+    pub errno: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,6 +69,10 @@ pub enum StreamRecord {
         bytes: Option<u64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         fd: Option<i32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        return_value: Option<i64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        errno: Option<u32>,
     },
     Aggregate {
         timestamp_unix_ms: u64,
@@ -108,6 +114,10 @@ pub struct SyscallEvent {
     pub file: Option<String>,
     pub bytes: Option<u64>,
     pub fd: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub return_value: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub errno: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,7 +165,16 @@ pub fn parse_aggregate_line(line: &str) -> Option<(String, u64)> {
 }
 
 pub fn parse_event_line(line: &str) -> Option<ParsedEvent> {
-    let mut parts = line.split_whitespace();
+    let line = line.trim_end_matches(['\r', '\n']);
+    // The collector writes the pathname last. Keep it separate from header
+    // fields so spaces or text such as `errno=0` in a pathname cannot rewrite
+    // the syscall result. Newlines and collector string truncation remain
+    // limitations of the raw line format.
+    let (header, path) = match line.split_once(" file=") {
+        Some((header, path)) => (header, Some(path.to_string())),
+        None => (line, None),
+    };
+    let mut parts = header.split_whitespace();
     let kind = match parts.next()? {
         "execve" => EventKind::Execve,
         "openat" => EventKind::OpenAt,
@@ -166,9 +185,11 @@ pub fn parse_event_line(line: &str) -> Option<ParsedEvent> {
 
     let mut comm = None;
     let mut pid = None;
-    let mut file = None;
+    let mut file = path;
     let mut bytes = None;
     let mut fd = None;
+    let mut return_value = None;
+    let mut errno = None;
 
     for part in parts {
         let (key, value) = match part.split_once('=') {
@@ -182,8 +203,37 @@ pub fn parse_event_line(line: &str) -> Option<ParsedEvent> {
             "file" => file = Some(value.to_string()),
             "bytes" => bytes = value.parse().ok(),
             "fd" => fd = value.parse().ok(),
+            "return_value" => {
+                if return_value.is_some() {
+                    return None;
+                }
+                return_value = Some(value.parse::<i64>().ok()?);
+            }
+            "errno" => {
+                if errno.is_some() {
+                    return None;
+                }
+                errno = Some(value.parse::<u32>().ok()?);
+            }
             _ => {}
         }
+    }
+
+    // Legacy entry-only records have neither field. A partial or inconsistent
+    // result is invalid, not evidence of success or a legacy observation.
+    match (return_value, errno) {
+        (None, None) => {}
+        (Some(result), Some(error)) if kind == EventKind::OpenAt => {
+            let expected = if result < 0 {
+                u32::try_from(result.checked_neg()?).ok()?
+            } else {
+                0
+            };
+            if error != expected {
+                return None;
+            }
+        }
+        _ => return None,
     }
 
     Some(ParsedEvent {
@@ -193,6 +243,8 @@ pub fn parse_event_line(line: &str) -> Option<ParsedEvent> {
         file,
         bytes,
         fd,
+        return_value,
+        errno,
     })
 }
 
@@ -210,6 +262,8 @@ pub fn stream_record_for_line_at(line: &str, timestamp_unix_ms: u64) -> Option<S
             file: event.file,
             bytes: event.bytes,
             fd: event.fd,
+            return_value: event.return_value,
+            errno: event.errno,
         }),
         ParsedLine::Aggregate { name, value } => Some(StreamRecord::Aggregate {
             timestamp_unix_ms,
@@ -248,6 +302,8 @@ pub fn build_session_trace(records: &[StreamRecord]) -> SessionTrace {
                 file,
                 bytes,
                 fd,
+                return_value,
+                errno,
             } => {
                 started_unix_ms = started_unix_ms.min(*timestamp_unix_ms);
                 finished_unix_ms = finished_unix_ms.max(*timestamp_unix_ms);
@@ -288,6 +344,8 @@ pub fn build_session_trace(records: &[StreamRecord]) -> SessionTrace {
                     file: file.clone(),
                     bytes: *bytes,
                     fd: *fd,
+                    return_value: *return_value,
+                    errno: *errno,
                 });
             }
             StreamRecord::Aggregate {
@@ -357,6 +415,106 @@ mod tests {
         assert_eq!(parsed.comm, "session-io-demo");
         assert_eq!(parsed.pid, 723);
         assert_eq!(parsed.file.as_deref(), Some("input/message.txt"));
+        assert_eq!((parsed.return_value, parsed.errno), (None, None));
+    }
+
+    #[test]
+    fn completed_file_opens_preserve_result_through_json_and_session() {
+        for (result, errno) in [(-2, 2), (-13, 13), (0, 0), (17, 0)] {
+            let line = format!(
+                "openat comm=api pid=723 return_value={result} errno={errno} file=/data/input.txt"
+            );
+            let record =
+                stream_record_for_line_at(&line, 123).expect("completed open should parse");
+            let json = serde_json::to_value(&record).unwrap();
+            assert_eq!(json["return_value"], result);
+            assert_eq!(json["errno"], errno);
+            assert_eq!(json["kind"], "open_at");
+            assert_eq!(json["file"], "/data/input.txt");
+            let decoded: StreamRecord = serde_json::from_value(json).unwrap();
+            assert_eq!(decoded, record);
+            let trace = build_session_trace(&[decoded]);
+            assert_eq!(trace.syscall_records, 1);
+            let event = &trace.processes[0].events[0];
+            assert_eq!(event.return_value, Some(result));
+            assert_eq!(event.errno, Some(errno as u32));
+        }
+    }
+
+    #[test]
+    fn legacy_captures_keep_unknown_outcomes() {
+        let json = r#"{"type":"syscall","timestamp_unix_ms":123,"kind":"open_at","comm":"api","pid":7,"file":"/data/input.txt"}"#;
+        let record: StreamRecord = serde_json::from_str(json).unwrap();
+        let trace = build_session_trace(&[record.clone()]);
+        let event = &trace.processes[0].events[0];
+        assert_eq!((event.return_value, event.errno), (None, None));
+        let encoded = serde_json::to_value(record).unwrap();
+        assert!(encoded.get("return_value").is_none());
+        assert!(encoded.get("errno").is_none());
+        let legacy_event = r#"{"timestamp_unix_ms":123,"kind":"open_at","file":"/data/input.txt","bytes":null,"fd":null}"#;
+        let event: super::SyscallEvent = serde_json::from_str(legacy_event).unwrap();
+        assert_eq!((event.return_value, event.errno), (None, None));
+    }
+
+    #[test]
+    fn malformed_outcomes_are_not_accepted_as_success_or_legacy() {
+        for fields in [
+            "return_value=0",
+            "errno=0",
+            "return_value=nope errno=0",
+            "return_value=0 errno=nope",
+            "return_value=0 errno=-1",
+            "return_value=-2 errno=0",
+            "return_value=5 errno=2",
+            "return_value=-2 errno=13",
+            "return_value=-9223372036854775808 errno=0",
+            "return_value=0 errno=0 errno=0",
+            "return_value=0 return_value=0 errno=0",
+        ] {
+            assert!(
+                parse_event_line(&format!(
+                    "openat comm=api pid=7 {fields} file=/data/input.txt"
+                ))
+                .is_none(),
+                "accepted invalid outcome: {fields}"
+            );
+        }
+        assert!(parse_event_line("write comm=api pid=7 return_value=0 errno=0").is_none());
+    }
+
+    #[test]
+    fn filename_cannot_overwrite_outcome_fields() {
+        let line = "openat comm=api pid=7 return_value=-2 errno=2 file=/data/missing file errno=0 return_value=0\n";
+        let event = parse_event_line(line).unwrap();
+        assert_eq!(event.return_value, Some(-2));
+        assert_eq!(event.errno, Some(2));
+        assert_eq!(
+            event.file.as_deref(),
+            Some("/data/missing file errno=0 return_value=0")
+        );
+    }
+
+    #[test]
+    fn interleaved_worker_results_remain_independent() {
+        let inputs = [
+            "openat comm=worker pid=7 return_value=-2 errno=2 file=/data/missing.txt",
+            "openat comm=child pid=8 return_value=0 errno=0 file=/data/control.txt",
+            "openat comm=worker pid=7 return_value=-13 errno=13 file=/data/private.txt",
+            "openat comm=worker pid=7 file=/data/legacy.txt",
+        ];
+        let records: Vec<_> = inputs
+            .iter()
+            .enumerate()
+            .map(|(n, input)| stream_record_for_line_at(input, n as u64).unwrap())
+            .collect();
+        let trace = build_session_trace(&records);
+        let events = &trace.processes.iter().find(|p| p.pid == 7).unwrap().events;
+        assert_eq!(
+            events.iter().map(|e| e.errno).collect::<Vec<_>>(),
+            vec![Some(2), Some(13), None]
+        );
+        let child = &trace.processes.iter().find(|p| p.pid == 8).unwrap().events[0];
+        assert_eq!((child.return_value, child.errno), (Some(0), Some(0)));
     }
 
     #[test]
@@ -373,6 +531,7 @@ mod tests {
                 bytes,
                 file,
                 fd,
+                ..
             } => {
                 assert_eq!(timestamp_unix_ms, 123);
                 assert_eq!(kind, EventKind::Write);
@@ -465,6 +624,8 @@ mod tests {
                 file: None,
                 bytes: None,
                 fd: None,
+                return_value: None,
+                errno: None,
             },
             StreamRecord::Syscall {
                 timestamp_unix_ms: 120,
@@ -474,6 +635,8 @@ mod tests {
                 file: None,
                 bytes: Some(64),
                 fd: Some(1),
+                return_value: None,
+                errno: None,
             },
             StreamRecord::Aggregate {
                 timestamp_unix_ms: 130,

@@ -1,5 +1,58 @@
 # In-container alpha validation
 
+## Alpha.4 release preparation — 2026-11-28
+
+The implementation at `d4f3af65b4fe55cd0ff3c707c86f78485dff2002`
+passed all five jobs in [PR #5 CI](https://github.com/givtaj/ebpf-tracker/actions/runs/46054321614)
+on the first attempt: workspace checks, smoke, strict Linux release validation,
+and native Bookworm amd64/ARM64 package acceptance. Both native jobs built and
+installed the actual package, exercised the synthetic Axum missing-file scenario,
+verified isolation/lifecycle, and replayed the saved capture without Docker.
+The [branch push run](https://github.com/givtaj/ebpf-tracker/actions/runs/46054264661)
+also passed its applicable checks; its native and strict jobs were intentionally
+delegated to the PR run.
+
+Release-facing documentation is prepared for `v0.2.0-alpha.4`. Merged-main CI,
+exact-tag validation/publication, and fresh public artifact verification remain
+pending until recorded separately. Earlier local-only amd64/CI gaps below are
+closed by the PR run for the stated implementation head. Roots and its database
+remain outside this release validation.
+
+## Alpha.4 development candidate — 2026-11-25
+
+**PASS for local native ARM64 implementation acceptance; not published.** The
+synthetic Axum missing-file scenario records completed file-open results and
+shows readable failure evidence in replay. Roots source, services and its
+database were not accessed or changed by this work.
+
+| Check | Result |
+| --- | --- |
+| Workspace | 138 tests PASS; workspace build and formatting PASS |
+| Bookworm ARM64 package | Built and installed in a clean runtime image without Cargo/rustc; 14 Linux agent tests PASS |
+| Host | Native Docker ARM64, Linux `7.0.14-linuxkit`, Bookworm bpftrace 0.17 |
+| Missing-file reproduction | Four concurrent HTTP requests returned the expected 500/ENOENT response; four independent captured opens of `/data/fixture-missing-input.txt` had `return_value: -2`, `errno: 2` |
+| Successful control | Five opens of `/data/file-open-control.txt` succeeded with nonnegative return values and zero errno |
+| Capture | 50 JSONL records: 49 syscall records, including 29 completed opens (4 failed, 25 succeeded); unrelated container activity excluded |
+| Lifecycle | Graceful exit 0; failure 23, missing command 127, denied prerequisites 125, forced shutdown 137, SIGINT 0 and collector failure 125 all verified; owned processes reaped |
+| Replay | Source-built alpha.4 CLI replayed the actual saved capture from an external directory with Docker blocked; legacy captures retained unknown outcomes |
+| Viewer | Four tests cover outcomes, escaping, bounded retention, reset, journey labels and failure rendering; actual browser display shows full path, ENOENT, process/PID and return value |
+| Cleanup | Both fixture runs removed their own containers and Compose networks; no containers remained running, matching the initial state |
+
+Runtime package SHA-256:
+`3fff3d080b05a676d4e920eaa3a84a353cbade0ee78602d2c99b08c244589c85`.
+The first live run captured the correct outcomes but failed a validator's
+assumed Tokio worker name. The example now explicitly names its workers
+`axum-worker`; a fresh installed-package run passed. Both receipts are retained
+locally under `output/alpha4-validation/`.
+
+The evidence establishes concurrent requests, not distinct overlapping Linux
+thread IDs or per-request attribution. The missing-file route only reads
+synthetic files; the separate existing exercise uses its disposable PostgreSQL
+fixture. No Roots data is used. Native amd64 alpha.4 execution, remote CI,
+exact-tag/public-download validation and independent developer acceptance are
+**NOT RUN**. Existing native amd64/arm64 CI and release jobs run the strengthened
+package and replay gates before publication.
+
 ## Published alpha.3 — 2026-11-25
 
 **PASS:** [v0.2.0-alpha.3](https://github.com/givtaj/ebpf-tracker/releases/tag/v0.2.0-alpha.3)

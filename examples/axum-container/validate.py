@@ -20,6 +20,17 @@ require(exercise == {
     "database_marker": "ebpf-alpha-fixture", "answer": 42,
     "file_written": True, "descendant_finished": True,
 }, "real PostgreSQL query and fixture route response")
+missing_file_path = "/data/fixture-missing-input.txt"
+control_file_path = "/data/file-open-control.txt"
+missing_file_requests = int((root / "missing-file-request-count.txt").read_text())
+require(missing_file_requests == 4, "four missing-file requests must run")
+for request in range(1, missing_file_requests + 1):
+    require((root / f"missing-file-{request}.status").read_text().strip() == "500",
+            f"missing-file request {request} must reproduce HTTP 500")
+    require(json.loads((root / f"missing-file-{request}.json").read_text()) == {
+        "error": "fixture_missing_file", "path": missing_file_path,
+        "errno": 2, "control_read": True,
+    }, f"missing-file request {request} must report ENOENT after reading its control")
 status = identity["status"]
 require([int(value) for value in status["Uid"].split()] == [10001] * 4,
         "application real/effective/saved/fs UIDs must all be 10001")
@@ -33,11 +44,14 @@ require(status["NoNewPrivs"] == "1", "application must have no_new_privs")
 
 for filename, expected in (
     ("startup-marker.txt", "fixture-startup-marker\n"),
+    ("file-open-control.txt", "fixture-file-open-control\n"),
     ("route-marker.txt", "fixture-route-marker\n"),
     ("descendant-marker.txt", "fixture-descendant-marker\n"),
     ("shutdown-marker.txt", "fixture-graceful-shutdown\n"),
 ):
     require((root / "data" / filename).read_text() == expected, f"retained {filename}")
+require(not (root / "data" / "fixture-missing-input.txt").exists(),
+        "missing-file scenario must not create its absent input")
 require((root / "stop-exit-code.txt").read_text().strip() == "0", "graceful stop exit status")
 require((root / "noise-proof.txt").read_text() == "unrelated", "independent noise workload did not execute")
 
@@ -72,6 +86,32 @@ require(any(record.get("kind") == "open_at" and record.get("file") == "/data/rou
             for record in app_events), "known app file open")
 require(any(record.get("kind") == "open_at" and record.get("file") == "/data/descendant-marker.txt"
             and record.get("pid") != app_pid for record in syscalls), "descendant file open")
+open_events = [record for record in syscalls if record.get("kind") == "open_at"]
+for record in open_events:
+    result, error = record.get("return_value"), record.get("errno")
+    require(type(result) is int and type(error) is int,
+            "installed alpha.4 must report an integer result and errno for every completed open")
+    require(error == (0 if result >= 0 else -result),
+            "file-open result and errno must agree")
+missing_file_events = [record for record in open_events if record.get("file") == missing_file_path]
+require(len(missing_file_events) == missing_file_requests,
+        "one completed failed open must be captured for each missing-file request")
+for record in missing_file_events:
+    require(record.get("pid") == app_pid and record.get("comm") in {"axum-fixture", "axum-worker"},
+            "missing-file evidence must identify the API process and its worker")
+    require(record["return_value"] == -2 and record["errno"] == 2,
+            "missing file must have kernel result -ENOENT, independently of the HTTP body")
+control_file_events = [record for record in open_events if record.get("file") == control_file_path]
+require(len(control_file_events) >= missing_file_requests + 1,
+        "successful control creation and all request reads must be captured")
+for record in control_file_events:
+    require(record.get("pid") == app_pid and record.get("comm") in {"axum-fixture", "axum-worker"},
+            "control file evidence must identify the API process and its worker")
+    require(record["return_value"] >= 0 and record["errno"] == 0,
+            "successful control opens must not inherit a concurrent missing-file error")
+require(all(record["return_value"] >= 0 and record["errno"] == 0
+            for record in open_events if record.get("file") == "/data/descendant-marker.txt"),
+        "descendant opens must not inherit worker errors")
 for record in syscalls:
     require(record.get("comm") not in {"outside-noise", "host-noise"}, "unrelated process leaked into trace")
     require(not any(marker in record.get("file", "") for marker in ("unrelated-noise-marker", "host-noise-marker")),
@@ -100,6 +140,14 @@ summary = {
     "trace_records": len(records), "syscall_records": len(syscalls),
     "syscall_kinds": sorted({record["kind"] for record in syscalls}),
     "graceful_exit": 0, "noise_excluded": True,
+    "missing_file": {
+        "path": missing_file_path, "http_status": 500,
+        "requests": missing_file_requests, "completed_opens": len(missing_file_events),
+        "return_value": -2, "errno": 2,
+    },
+    "file_open_control": {
+        "path": control_file_path, "successful_opens": len(control_file_events), "errno": 0,
+    },
     "negative_cases": negative_cases,
     "lifecycle": lifecycle,
 }

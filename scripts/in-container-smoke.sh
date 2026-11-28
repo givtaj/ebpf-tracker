@@ -13,8 +13,8 @@ usage() {
 Usage: bash scripts/in-container-smoke.sh --package <runtime.deb> [--output-dir <evidence>]
 
 Installs the actual package in an isolated Bookworm Axum app container and
-checks HTTP/PostgreSQL activity, tracing, app privilege drop, shutdown, exit
-status and scope. Requires a trusted Linux Docker host with privileged and
+checks HTTP/PostgreSQL activity, missing-file diagnosis, tracing, app privilege
+drop, shutdown, exit status and scope. Requires a trusted Linux Docker host with privileged and
 host-PID containers. No existing workloads or Docker cache are removed.
 Evidence is retained; --deb is an alias for --package.
 EOF
@@ -45,10 +45,18 @@ export FIXTURE_CONTEXT="${context_dir}" FIXTURE_OUTPUT="${output_dir}" FIXTURE_I
 compose=(docker compose -p "${project}" -f "${fixture_dir}/compose.yaml")
 host_noise_pid=""
 app_id=""
+missing_file_pids=()
 
 cleanup() {
   result=$?
   trap - EXIT INT TERM
+  # Each owned HTTP client has a ten-second deadline. Reap them even if the
+  # concurrent exercise request failed, before stopping the fixture API.
+  if [[ -n "${missing_file_pids[*]-}" ]]; then
+    for request_pid in "${missing_file_pids[@]}"; do
+      wait "${request_pid}" 2>/dev/null || true
+    done
+  fi
   if [[ -n "${host_noise_pid}" ]]; then
     touch "${output_dir}/stop-host-noise"
     wait "${host_noise_pid}" 2>/dev/null || true
@@ -115,7 +123,25 @@ for attempt in $(seq 1 90); do
 done
 [[ "${ready}" -eq 1 ]] || fail "HTTP health route did not become ready"
 curl --silent --show-error --fail --max-time 10 "http://${endpoint}/identity" >"${output_dir}/identity.json"
+# An intentional HTTP 500 is the fixture's successful reproduction of the
+# missing-file bug, so do not use curl --fail for these requests. Launch four
+# bounded requests alongside /exercise to exercise worker/child event pairing.
+missing_file_requests=4
+for request in $(seq 1 "${missing_file_requests}"); do
+  curl --silent --show-error --max-time 10 \
+    --output "${output_dir}/missing-file-${request}.json" \
+    --write-out '%{http_code}\n' "http://${endpoint}/missing-file" \
+    >"${output_dir}/missing-file-${request}.status" &
+  missing_file_pids+=("$!")
+done
 curl --silent --show-error --fail --max-time 20 "http://${endpoint}/exercise" >"${output_dir}/exercise.json"
+missing_file_transport_failed=0
+for request_pid in "${missing_file_pids[@]}"; do
+  wait "${request_pid}" || missing_file_transport_failed=1
+done
+missing_file_pids=()
+[[ "${missing_file_transport_failed}" -eq 0 ]] || fail "missing-file HTTP request failed before receiving a response"
+printf '%s\n' "${missing_file_requests}" >"${output_dir}/missing-file-request-count.txt"
 noise_id="$("${compose[@]}" ps -q noise)"
 [[ -n "${noise_id}" && "$(docker inspect --format '{{.State.Running}}' "${noise_id}")" == true ]] || fail "unrelated noise container is not running"
 "${compose[@]}" exec -T noise /bin/sh -c 'test -s /tmp/unrelated-noise-marker && cat /tmp/unrelated-noise-marker' >"${output_dir}/noise-proof.txt"
@@ -177,4 +203,4 @@ cases = dict(line.split() for line in (root / "negative-cases.txt").read_text().
 PY
 bash "${script_dir}/test-agent-lifecycle.sh" --image "${FIXTURE_IMAGE}" --output-dir "${output_dir}/lifecycle"
 python3 "${fixture_dir}/validate.py" "${output_dir}"
-printf 'in-container smoke: PASS: real package, Axum/PostgreSQL, trace isolation, privilege drop and lifecycle\n'
+printf 'in-container smoke: PASS: real package, Axum/PostgreSQL, missing-file diagnosis, trace isolation, privilege drop and lifecycle\n'

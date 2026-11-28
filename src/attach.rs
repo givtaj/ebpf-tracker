@@ -1057,6 +1057,8 @@ fn parse_inspektor_gadget_json_record(
         file,
         bytes,
         fd,
+        return_value: None,
+        errno: None,
     })
 }
 

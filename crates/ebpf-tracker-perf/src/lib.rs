@@ -142,6 +142,8 @@ pub fn stream_record_for_perf_trace_line_at(
         file: parsed.file,
         bytes: parsed.bytes,
         fd: parsed.fd,
+        return_value: None,
+        errno: None,
     })
 }
 
@@ -417,6 +419,7 @@ mod tests {
                 file,
                 bytes,
                 fd,
+                ..
             } => {
                 assert_eq!(timestamp_unix_ms, 777);
                 assert_eq!(kind, EventKind::Execve);
@@ -449,6 +452,7 @@ mod tests {
                 file,
                 bytes,
                 fd,
+                ..
             } => {
                 assert_eq!(timestamp_unix_ms, 777);
                 assert_eq!(kind, EventKind::Execve);

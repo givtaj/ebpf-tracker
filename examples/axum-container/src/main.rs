@@ -3,11 +3,17 @@ use serde_json::{json, Value};
 use std::{collections::BTreeMap, env, fs, process::Command};
 use tokio_postgres::NoTls;
 
+const FILE_OPEN_CONTROL: &str = "/data/file-open-control.txt";
+const FILE_OPEN_CONTROL_CONTENT: &str = "fixture-file-open-control\n";
+const MISSING_FILE: &str = "/data/fixture-missing-input.txt";
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Exercise the original application thread before Tokio creates workers.
     // Worker/descendant events alone must not make the capture gate pass.
     fs::write("/data/startup-marker.txt", "fixture-startup-marker\n")?;
+    fs::write(FILE_OPEN_CONTROL, FILE_OPEN_CONTROL_CONTENT)?;
     tokio::runtime::Builder::new_multi_thread()
+        .thread_name("axum-worker")
         .enable_all()
         .build()?
         .block_on(serve())
@@ -17,6 +23,7 @@ async fn serve() -> Result<(), Box<dyn std::error::Error>> {
     let router = Router::new()
         .route("/health", get(|| async { Json(json!({"ok": true})) }))
         .route("/identity", get(identity))
+        .route("/missing-file", get(missing_file))
         .route("/exercise", get(exercise));
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await?;
     println!("fixture-listening pid={}", std::process::id());
@@ -25,6 +32,35 @@ async fn serve() -> Result<(), Box<dyn std::error::Error>> {
         .await?;
     println!("fixture-shutdown-complete");
     Ok(())
+}
+
+async fn missing_file() -> (StatusCode, Json<Value>) {
+    // This scenario only reads synthetic files. In particular, it never opens
+    // a database connection or changes data to manufacture the failure.
+    if !matches!(fs::read_to_string(FILE_OPEN_CONTROL), Ok(content) if content == FILE_OPEN_CONTROL_CONTENT)
+    {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": "fixture_control_read_failed"})),
+        );
+    }
+    match fs::read_to_string(MISSING_FILE) {
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": "fixture_missing_file",
+                "path": MISSING_FILE,
+                "errno": error.raw_os_error(),
+                "control_read": true,
+            })),
+        ),
+        // The smoke test requires 500/ENOENT; an accidentally created file
+        // must fail that test instead of silently pretending it is absent.
+        Ok(_) => (
+            StatusCode::OK,
+            Json(json!({"error": "fixture_missing_file_unexpectedly_exists"})),
+        ),
+    }
 }
 
 async fn identity() -> Result<Json<Value>, (StatusCode, String)> {

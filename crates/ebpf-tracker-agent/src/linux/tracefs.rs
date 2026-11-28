@@ -9,6 +9,7 @@ const REQUIRED_EVENTS: &[&str] = &[
     "syscalls/sys_enter_getpid",
     "syscalls/sys_enter_execve",
     "syscalls/sys_enter_openat",
+    "syscalls/sys_exit_openat",
     "syscalls/sys_enter_write",
     "syscalls/sys_enter_connect",
 ];
@@ -80,4 +81,29 @@ pub(super) fn prepare() -> Result<TracingMounts, String> {
         }
     }
     Err(format!("kernel tracing is unavailable; this alpha needs a privileged Linux development container with host PID namespace and tracefs/debugfs permissions ({})", errors.join("; ")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{available, REQUIRED_EVENTS};
+    use crate::linux::RunDirectory;
+    use std::fs;
+
+    #[test]
+    fn file_open_exit_tracepoint_is_required_before_launch() {
+        let directory = RunDirectory::new().unwrap();
+        for event in REQUIRED_EVENTS {
+            if *event == "syscalls/sys_exit_openat" {
+                continue;
+            }
+            let path = directory.path.join("events").join(event);
+            fs::create_dir_all(&path).unwrap();
+            fs::write(path.join("id"), "1\n").unwrap();
+        }
+        assert!(!available(&directory.path));
+        let exit_event = directory.path.join("events/syscalls/sys_exit_openat");
+        fs::create_dir_all(&exit_event).unwrap();
+        fs::write(exit_event.join("id"), "2\n").unwrap();
+        assert!(available(&directory.path));
+    }
 }

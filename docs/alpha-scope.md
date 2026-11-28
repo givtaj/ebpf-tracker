@@ -1,6 +1,7 @@
 # Axum In-Container Alpha
 
-Release line: `0.2.0-alpha.3`. The selected workflow installs a
+Release line: `0.2.0-alpha.4`. See [alpha validation](./alpha-validation.md)
+for publication status and exact-artifact evidence. The selected workflow installs a
 native tracing agent inside an existing Bookworm application image and starts
 the Axum API through that agent. Roots supplied the reference Docker layout;
 release gates use a separate synthetic fixture. A separately authorized local
@@ -30,10 +31,13 @@ to an already-running API or stop collection independently of the server.
 - An existing non-root application user, with UID/GID/groups and capabilities
   managed by the launcher. The image's default Docker user remains root for
   the collector; healthcheck and exec identity must be handled explicitly.
-- Four fixed process-tree probes: `execve`, `openat`, `write`, and `connect`.
+- Four fixed process-tree syscall kinds: `execve`, `openat`, `write`, and `connect`.
+  In alpha.4, the in-container agent pairs `openat` entry and exit by Linux
+  thread ID and records the return value and errno. The other three event
+  kinds, generic command tracing and older captures retain entry-only semantics.
 - Application stdout/stderr separate from a newly created JSONL output file.
 - Bookworm runtime packages for native amd64 and arm64 Linux Docker hosts.
-  The alpha.3 workflow requires separate native installed-package and live
+  The alpha.4 workflow requires separate native installed-package and live
   acceptance gates for both architectures before publication. Emulated live
   tracing is outside the validated boundary.
 
@@ -58,6 +62,10 @@ ARM64 runtime-package support does not add an ARM64 host CLI archive.
 - Verify the app's non-root identity, cleared capabilities, and no_new_privs.
 - Capture app-specific file/write/connection activity and all four event kinds;
   exclude concurrent activity from an unrelated process/container.
+- For alpha.4, require the synthetic missing-file HTTP failure and a matching
+  completed file-open record with `return_value: -2` and `errno: 2`, plus a
+  successful file-open control. Replay must expose the path, process and error
+  while keeping legacy unknown outcomes distinct from success.
 - Keep API stdout/stderr out of the normalized JSONL, preserving Docker logs.
 - Forward SIGTERM, let the app finish its shutdown work, flush capture, and
   preserve ordinary failure status (including exit 23).
@@ -70,15 +78,20 @@ Current publication status and exact-artifact evidence are recorded in
 [alpha validation](./alpha-validation.md) and TASKLOG.md. The earlier
 [source-built ARM64 Roots pilot](./roots-pilot-2026-11-25.md) established health,
 scoped process activity, shutdown and replay for that local setup. It does not
-replace alpha.3's tagged-package gates or establish HTTP request attribution.
+replace alpha.4's tagged-package gates or establish HTTP request attribution.
 
 ## Evidence Limits
 
-Events record syscall entry, not successful completion. Write counts are
+Alpha.4 in-container `open_at` events record completed opens, including a
+signed return value and numeric errno (zero on success). They do not establish
+that file contents were read, or which HTTP request caused the operation.
+Older captures and other collectors omit these fields: their outcomes are
+unknown. Other event kinds still record syscall entry. Write counts are
 requested bytes, not throughput. Connections contain a file descriptor, not a
 destination. There is no HTTP method, route, request ID, duration, SQL statement,
 or per-request causal relationship. Timestamps reflect parser receipt; long
-or whitespace-containing paths retain shared parser limits. Async workloads
+paths can be truncated by the collector and embedded newlines retain raw-format
+limits. Async workloads
 may use pooled connections or other syscalls outside these four probes.
 
 Do not market this alpha as complete network visibility, request tracing,

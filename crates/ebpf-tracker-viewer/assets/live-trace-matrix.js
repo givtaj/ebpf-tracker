@@ -106,10 +106,12 @@ async function main() {
   process.on("SIGTERM", () => shutdown("SIGTERM"));
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}
 
 function parseArgs(args) {
   let port = DEFAULT_PORT;
@@ -278,6 +280,8 @@ function createState() {
     counters: emptyCounters(),
     processCounts: new Map(),
     fileCounts: new Map(),
+    openOutcomes: { succeeded: 0, failed: 0, unknown: 0 },
+    recentOpenFailures: [],
     writes: [],
     startedAt: Date.now(),
     tracerEnded: false,
@@ -1023,6 +1027,8 @@ function clearTraceState(state) {
   state.counters = emptyCounters();
   state.processCounts = new Map();
   state.fileCounts = new Map();
+  state.openOutcomes = { succeeded: 0, failed: 0, unknown: 0 };
+  state.recentOpenFailures = [];
   state.writes = [];
   state.startedAt = Date.now();
   state.progress.emitted = 0;
@@ -1109,6 +1115,17 @@ function ingestSyscall(event, state, options = {}) {
     state.fileCounts.set(event.file, (state.fileCounts.get(event.file) || 0) + 1);
   }
 
+  if (kind === "open_at") {
+    const outcome = openOutcome(event);
+    state.openOutcomes[outcome.status] += 1;
+    if (outcome.status === "failed") {
+      // Keep failures visible after they leave the recent-events window. Bound
+      // retention independently of ordinary loader and application activity.
+      state.recentOpenFailures.unshift(decorateEvent(event, state.startedAt));
+      state.recentOpenFailures = state.recentOpenFailures.slice(0, 32);
+    }
+  }
+
   state.recentEvents.unshift(decorateEvent(event, state.startedAt));
   state.recentEvents = state.recentEvents.slice(0, 180);
 
@@ -1125,6 +1142,7 @@ function decorateEvent(event, startedAt) {
     ...event,
     glyph,
     text,
+    ...(event.kind === "open_at" ? { open_outcome: openOutcome(event) } : {}),
     since_start_ms: sinceStartMs
   };
 }
@@ -1132,6 +1150,8 @@ function decorateEvent(event, startedAt) {
 function buildSnapshot(state) {
   return {
     counters: state.counters,
+    openOutcomes: { ...state.openOutcomes },
+    recentOpenFailures: state.recentOpenFailures.slice(),
     recentEvents: state.recentEvents.slice(0, 24),
     topProcesses: [...state.processCounts.entries()]
       .sort((left, right) => right[1] - left[1])
@@ -1330,7 +1350,7 @@ function glyphForKind(kind) {
 function eventText(event) {
   switch (event.kind) {
     case "open_at":
-      return `${event.comm || "unknown"} open_at ${shortPath(event.file || "unknown")}`;
+      return `${event.comm || "unknown"} open_at ${shortPath(String(event.file || "unknown"))} — ${openOutcome(event).label}`;
     case "execve":
       return `${event.comm || "unknown"} execve pid=${event.pid || "?"}`;
     case "connect":
@@ -1342,6 +1362,29 @@ function eventText(event) {
     default:
       return JSON.stringify(event);
   }
+}
+
+function openOutcome(event) {
+  const result = event.return_value;
+  const errno = event.errno;
+  // Legacy records and incomplete/inconsistent results cannot establish success.
+  if (!Number.isSafeInteger(result) || !Number.isSafeInteger(errno) || errno < 0 ||
+      errno !== (result < 0 ? -result : 0)) {
+    return { status: "unknown", label: "attempt (outcome unknown)" };
+  }
+  if (result >= 0) {
+    return { status: "succeeded", label: `opened (fd ${result})` };
+  }
+  const errors = {
+    1: ["EPERM", "Operation not permitted"],
+    2: ["ENOENT", "No such file or directory"],
+    13: ["EACCES", "Permission denied"],
+    20: ["ENOTDIR", "Not a directory"],
+    24: ["EMFILE", "Too many open files"],
+    36: ["ENAMETOOLONG", "File name too long"]
+  };
+  const [name, description] = errors[errno] || [`errno ${errno}`, "File open failed"];
+  return { status: "failed", label: `${name} (${errno}): ${description}` };
 }
 
 function shortPath(file) {
@@ -2065,6 +2108,11 @@ function renderHtml() {
         color: var(--muted);
       }
 
+      #open-failures .open-failure-detail {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
       .row code,
       .bar-label span,
       .library-entry strong {
@@ -2261,6 +2309,12 @@ function renderHtml() {
             <div class="diagram-shell" id="trace-waterfall"></div>
           </section>
           <section class="panel section">
+            <h2>Failed File Opens</h2>
+            <p id="open-outcome-summary" aria-live="polite">No file opens observed.</p>
+            <p>Latest 32 failures across captured processes at this replay position. A failed open can be normal application behavior; these events are not attributed to an HTTP request.</p>
+            <div class="list" id="open-failures"></div>
+          </section>
+          <section class="panel section">
             <h2>Recent Events</h2>
             <div class="list" id="recent-events"></div>
           </section>
@@ -2355,6 +2409,8 @@ function renderHtml() {
         traceWaterfall: document.getElementById("trace-waterfall"),
         traceMap: document.getElementById("trace-map"),
         recentEvents: document.getElementById("recent-events"),
+        openFailures: document.getElementById("open-failures"),
+        openOutcomeSummary: document.getElementById("open-outcome-summary"),
         processBars: document.getElementById("process-bars"),
         fileList: document.getElementById("file-list"),
         writeList: document.getElementById("write-list"),
@@ -2517,6 +2573,19 @@ function renderHtml() {
         els.connect.textContent = formatNumber(snapshot.counters.connect);
         els.write.textContent = formatNumber(snapshot.counters.write);
         els.bytes.textContent = formatBytes(snapshot.counters.bytes);
+        const openOutcomes = snapshot.openOutcomes || { succeeded: 0, failed: 0, unknown: snapshot.counters.open_at };
+        els.openOutcomeSummary.textContent = formatNumber(openOutcomes.failed) + " failed · " +
+          formatNumber(openOutcomes.succeeded) + " succeeded · " + formatNumber(openOutcomes.unknown) + " outcome unknown";
+        setMarkup(els.openFailures, (snapshot.recentOpenFailures || []).length
+          ? snapshot.recentOpenFailures.map((event) => {
+              return '<div class="row">' +
+                '<span class="pill open_at">failed</span>' +
+                '<div class="open-failure-detail"><code>' + escapeHtml(String(event.file || "unknown")) + '</code><small>' +
+                escapeHtml(event.open_outcome.label) + '<br>' +
+                escapeHtml(String(event.comm || "unknown")) + ' pid ' + escapeHtml(String(event.pid ?? "?")) +
+                '</small></div><small>return ' + escapeHtml(String(event.return_value)) + '</small></div>';
+            }).join("")
+          : '<p>No failed file opens observed. Opens with unknown outcomes are not counted as successful.</p>');
         applyHeroStory(focusedSnapshot);
         setMarkup(els.traceWaterfall, renderWaterfall(displayEvents));
         setMarkup(els.traceMap, renderTraceMap(focusedSnapshot));
@@ -2554,7 +2623,7 @@ function renderHtml() {
           ? focusedSnapshot.topFiles.map((entry) => {
               return '<div class="row">' +
                 '<span class="pill file">file</span>' +
-                '<div><code>' + escapeHtml(entry.file) + '</code><small>opened ' + formatNumber(entry.count) + ' times</small></div>' +
+                '<div><code>' + escapeHtml(entry.file) + '</code><small>' + formatNumber(entry.count) + ' open attempts</small></div>' +
                 '<small></small>' +
               '</div>';
             }).join("")
@@ -2797,7 +2866,7 @@ function renderHtml() {
         if (topInput) {
           els.storySignal.textContent = mapPathLabel(topInput.file);
           els.storySignalDetail.textContent = classifySessionFile(topInput.file) === "template"
-            ? "Template and input reads are being surfaced ahead of runtime plumbing."
+            ? "Template and input open attempts are being surfaced ahead of runtime plumbing."
             : "Primary input file is being treated as first-class signal.";
         } else if ((snapshot.counters.connect || 0) > 0) {
           els.storySignal.textContent = formatNumber(snapshot.counters.connect) + " connect";
@@ -2809,7 +2878,7 @@ function renderHtml() {
 
         if (topArtifact) {
           els.storyOutcome.textContent = mapPathLabel(topArtifact.file);
-          els.storyOutcomeDetail.textContent = "Artifacts are ranked above container/runtime writes.";
+          els.storyOutcomeDetail.textContent = "Open attempts on output paths are shown here; creation is not established.";
         } else if ((snapshot.counters.write || 0) > 0) {
           els.storyOutcome.textContent = formatBytes(snapshot.counters.bytes || 0);
           els.storyOutcomeDetail.textContent = formatNumber(snapshot.counters.write || 0) + " focused writes from the session.";
@@ -3053,7 +3122,7 @@ function renderHtml() {
           }
           nodes.push({
             title: mapPathLabel(entry.file),
-            detail: formatNumber(entry.count) + " artifact open",
+            detail: formatNumber(entry.count) + " open attempts",
             color: "#b7ff6d",
             edgeLabel: "artifact"
           });
@@ -3128,7 +3197,7 @@ function renderHtml() {
             continue;
           }
           const previous = steps[steps.length - 1];
-          if (previous && previous.title === step.title && previous.kind === step.kind) {
+          if (previous && previous.title === step.title && previous.kind === step.kind && previous.detail === step.detail) {
             continue;
           }
           steps.push(step);
@@ -3149,12 +3218,13 @@ function renderHtml() {
 
       function journeyStepForEvent(event, primary) {
         if (event.kind === "open_at") {
-          const role = classifySessionFile(event.file || "");
+          const outcome = event.open_outcome || { status: "unknown", label: "attempt (outcome unknown)" };
           return {
             kind: "open_at",
             title: mapPathLabel(event.file || "file"),
-            detail: role === "artifact" ? "artifact open" : role === "template" ? "template read" : "input read",
-            color: role === "artifact" ? "#b7ff6d" : "#7bffb9"
+            detail: outcome.status === "failed" ? "failed: " + outcome.label.split(":")[0]
+              : outcome.status === "unknown" ? "attempt: unknown" : outcome.label,
+            color: outcome.status === "failed" ? "#ff5f7a" : "#7bffb9"
           };
         }
         if (event.kind === "connect") {
@@ -3509,3 +3579,5 @@ function renderHtml() {
   </body>
 </html>`;
 }
+
+module.exports = { createState, handleTraceRecord, buildSnapshot, clearTraceState, openOutcome, renderHtml };

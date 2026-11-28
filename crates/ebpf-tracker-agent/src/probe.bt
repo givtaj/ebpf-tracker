@@ -13,6 +13,8 @@ tracepoint:sched:sched_process_fork
 tracepoint:sched:sched_process_exit
 /@agent_tids[tid]/
 {
+  delete(@agent_open_pending[tid]);
+  delete(@agent_open_files[tid]);
   delete(@agent_tids[tid]);
 }
 
@@ -31,7 +33,20 @@ tracepoint:syscalls:sys_enter_execve
 tracepoint:syscalls:sys_enter_openat
 /@agent_tids[tid] && pid != cpid/
 {
-  printf("openat comm=%s pid=%d file=%s\n", comm, pid, str(args->filename));
+  // Copy the pathname while the syscall's userspace argument is valid. Each
+  // thread has at most one openat in flight; workers must not share a PID key.
+  @agent_open_files[tid] = str(args->filename);
+  @agent_open_pending[tid] = 1;
+}
+
+tracepoint:syscalls:sys_exit_openat
+/@agent_tids[tid] && pid != cpid && @agent_open_pending[tid]/
+{
+  $ret = args->ret;
+  $errno = $ret < 0 ? -$ret : 0;
+  printf("openat comm=%s pid=%d return_value=%d errno=%d file=%s\n", comm, pid, $ret, $errno, @agent_open_files[tid]);
+  delete(@agent_open_pending[tid]);
+  delete(@agent_open_files[tid]);
 }
 
 tracepoint:syscalls:sys_enter_write
@@ -48,5 +63,7 @@ tracepoint:syscalls:sys_enter_connect
 
 END
 {
+  clear(@agent_open_pending);
+  clear(@agent_open_files);
   clear(@agent_tids);
 }
