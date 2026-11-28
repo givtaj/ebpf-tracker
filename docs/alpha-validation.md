@@ -80,6 +80,17 @@ CI. No ARM64 host CLI archive, production acceptance, independent developer
 acceptance or HTTP request-to-syscall attribution is claimed. This post-publication
 receipt closes the release gates left pending in the preparation record below.
 
+## Later published-package Roots pilot — 2026-11-28
+
+The [published alpha.4 Roots health pilot](roots-pilot-2026-11-28.md) passed on
+the existing development checkout and database, without a checkout copy. Health
+returned 200; the scoped capture included 14 successful completed opens, and
+shutdown plus fresh public-CLI offline replay passed. All 2,285 recorded file
+hashes and Git edits matched; logical database schema/data/ownership/ACL hashes
+matched, and the original stopped Roots service state was restored. The receipt
+records the external HTTPS mirror adjustment, untouched concurrent Docker
+activity, and health-only coverage. Raw traces and database evidence stay local.
+
 ## Alpha.4 release preparation — 2026-11-28
 
 The implementation at `d4f3af65b4fe55cd0ff3c707c86f78485dff2002`

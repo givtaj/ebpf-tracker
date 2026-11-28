@@ -4,6 +4,10 @@ This file tracks notable repo changes in progress on this branch.
 
 ## Unreleased
 
+### Verification
+
+- Verify the published alpha.4 ARM64 package on the existing Roots development setup: read-only health, completed-open capture, shutdown and public-CLI replay PASS; recorded files/Git edits and logical database contents preserved, initial Roots service state restored. Record the external HTTPS mirror adjustment and concurrent unrelated Docker activity in the [pilot receipt](docs/roots-pilot-2026-11-28.md).
+
 ## v0.2.0-alpha.4 - 2026-11-28
 
 ### Added
