@@ -1,10 +1,10 @@
 # Trace an API inside its Docker container
 
-The download recipe below installs published **alpha.3**. The **alpha.4
-development candidate** adds file-open results and a
+This guide targets **alpha.4**, including completed file-open results and a
 [missing-file debugging walkthrough](../examples/axum-container/README.md).
-Build the runtime and replay CLI from this checkout to try that scenario;
-alpha.3 captures do not include file-open outcomes.
+Use the matching alpha.4 runtime and replay CLI to inspect the file path,
+process and error. Older captures without outcome fields remain unknown.
+See [alpha validation](./alpha-validation.md) for publication status and evidence.
 
 The `ebpf-tracker-runtime` Debian package installs `ebpf-tracker-agent` and its
 Bookworm dependencies. The agent is the container entrypoint: it starts
@@ -29,7 +29,7 @@ the same full capture assertions.
 
 ## Obtain the package
 
-The alpha.3 release gates a runtime `.deb` for each native Linux architecture:
+The alpha.4 release gates a runtime `.deb` for each native Linux architecture:
 
 | Application image and Docker host | Runtime package suffix |
 | --- | --- |
@@ -42,7 +42,7 @@ is outside this release's validation. Each package must pass its own native
 installed-package gate; a successful cross-build alone is insufficient.
 
 After the assets are available on the
-[GitHub release](https://github.com/givtaj/ebpf-tracker/releases/tag/v0.2.0-alpha.3),
+[GitHub release](https://github.com/givtaj/ebpf-tracker/releases/tag/v0.2.0-alpha.4),
 run this from your application's Docker build context. Set `runtime_arch` to
 `arm64` for a native ARM64 image/engine, or leave `amd64` for native x86_64:
 
@@ -56,8 +56,8 @@ run this from your application's Docker build context. Set `runtime_arch` to
   esac
   mkdir -p vendor
   cd vendor
-  release=https://github.com/givtaj/ebpf-tracker/releases/download/v0.2.0-alpha.3
-  package="ebpf-tracker-runtime_0.2.0-alpha.3_${runtime_arch}.deb"
+  release=https://github.com/givtaj/ebpf-tracker/releases/download/v0.2.0-alpha.4
+  package="ebpf-tracker-runtime_0.2.0-alpha.4_${runtime_arch}.deb"
   curl --fail --location --output "$package" "$release/$package"
   curl --fail --location --output SHA256SUMS "$release/SHA256SUMS"
   checksum="$(awk -v name="$package" '$2 == name { print }' SHA256SUMS)"
@@ -85,12 +85,11 @@ bash scripts/build-runtime-deb.sh --platform linux/amd64 --output-dir dist/runti
 ```
 
 Local builds use Debian-style names such as
-`ebpf-tracker-runtime_0.2.0~alpha.4_arm64.deb` for this development checkout. Published alpha.3 downloads use
-`ebpf-tracker-runtime_0.2.0-alpha.3_arm64.deb` because GitHub rewrites `~` in
-asset names. The same rule applies to amd64. Published alpha.3 packages contain
-Debian version `0.2.0~alpha.3`; this source build contains `0.2.0~alpha.4` and
-the agent prints `0.2.0-alpha.4`. Copy a verified source
-build into the application context as `vendor/ebpf-tracker-runtime.deb`.
+`ebpf-tracker-runtime_0.2.0~alpha.4_arm64.deb`. Release downloads use
+`ebpf-tracker-runtime_0.2.0-alpha.4_arm64.deb` because GitHub rewrites `~` in
+asset names. The same rule applies to amd64. Both forms contain Debian package
+version `0.2.0~alpha.4`; the agent prints `0.2.0-alpha.4`. Copy a verified
+source build into the application context as `vendor/ebpf-tracker-runtime.deb`.
 
 Pin and checksum the package in CI. The launcher is different from the host
 `ebpf-tracker` CLI, which orchestrates Docker and provides replay.
@@ -216,8 +215,16 @@ health request; the release gates use only the standalone synthetic fixture.
 ## Try the isolated Axum example
 
 The repository includes a separate Axum/PostgreSQL fixture with synthetic
-data. Its smoke test installs the actual package and verifies the launcher and
-capture contract:
+data. Its smoke test installs the actual package, reproduces four expected
+HTTP 500 responses from `/missing-file`, and checks the corresponding captured
+`ENOENT` results plus successful file-open controls. To use the verified package
+from the download recipe above:
+
+```bash
+bash scripts/in-container-smoke.sh --package vendor/ebpf-tracker-runtime.deb
+```
+
+For a locally built package instead:
 
 ```bash
 bash scripts/in-container-smoke.sh \
@@ -225,7 +232,9 @@ bash scripts/in-container-smoke.sh \
 ```
 
 Use the `_arm64.deb` package for a native arm64 Docker engine. The fixture does
-not access Roots, its services, or its data.
+not access Roots, its services, or its data. See the
+[example walkthrough](../examples/axum-container/README.md) for response files,
+replay instructions and the distinction between HTTP and syscall evidence.
 
 ## Inspect a capture
 
@@ -251,4 +260,5 @@ outcomes unknown. A successful open does not prove a successful read or write.
 The probes do not capture HTTP bodies,
 database contents, SQL statements, read/write completion, destination
 addresses, route names, request IDs, latency, or request-to-syscall causality.
-Long or whitespace-containing paths retain the shared parser's limitations.
+Long paths can be truncated by the collector, and paths containing newlines
+retain raw-format limitations.

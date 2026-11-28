@@ -4,13 +4,16 @@ This file tracks notable repo changes in progress on this branch.
 
 ## Unreleased
 
+## v0.2.0-alpha.4 - 2026-11-28
+
 ### Added
 
-- Prepare alpha.4 missing-file debugging for the synthetic Axum Docker example: completed `openat` results and errno in the in-container capture, a deterministic missing-file HTTP scenario, and readable failure evidence in offline replay. Legacy captures retain unknown outcomes; other syscall kinds remain entry-only observations.
+- Add missing-file debugging for the synthetic Axum Docker example: completed `openat` results and errno in the in-container capture, a deterministic missing-file HTTP scenario, and readable failure evidence in offline replay. Legacy captures retain unknown outcomes; other syscall kinds remain entry-only observations.
 
 ### Documentation
 
 - Retain the alpha.4 implementation reviews and local ARM64 capture/replay acceptance notes, including the corrected worker-name assertion and viewer labels.
+- Update the release notes and architecture-specific download guide for alpha.4 while retaining the trusted development/CI and whole-session evidence limits.
 
 ### Verification
 

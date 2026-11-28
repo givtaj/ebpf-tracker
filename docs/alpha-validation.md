@@ -1,5 +1,23 @@
 # In-container alpha validation
 
+## Alpha.4 release preparation — 2026-11-28
+
+The implementation at `d4f3af65b4fe55cd0ff3c707c86f78485dff2002`
+passed all five jobs in [PR #5 CI](https://github.com/givtaj/ebpf-tracker/actions/runs/46054321614)
+on the first attempt: workspace checks, smoke, strict Linux release validation,
+and native Bookworm amd64/ARM64 package acceptance. Both native jobs built and
+installed the actual package, exercised the synthetic Axum missing-file scenario,
+verified isolation/lifecycle, and replayed the saved capture without Docker.
+The [branch push run](https://github.com/givtaj/ebpf-tracker/actions/runs/46054264661)
+also passed its applicable checks; its native and strict jobs were intentionally
+delegated to the PR run.
+
+Release-facing documentation is prepared for `v0.2.0-alpha.4`. Merged-main CI,
+exact-tag validation/publication, and fresh public artifact verification remain
+pending until recorded separately. Earlier local-only amd64/CI gaps below are
+closed by the PR run for the stated implementation head. Roots and its database
+remain outside this release validation.
+
 ## Alpha.4 development candidate — 2026-11-25
 
 **PASS for local native ARM64 implementation acceptance; not published.** The

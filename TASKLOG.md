@@ -14,6 +14,10 @@ This file tracks user-requested work and delegated agent tasks in progress on th
 
 ### Focused Alpha Release
 
+- 2026-11-28 | Task: Merge and publish alpha.4, then verify public artifacts on the isolated synthetic Axum fixture; preserve Roots and the primary checkout | Owner: Codex | Status: running | Output: release v0.2.0-alpha.4 and `docs/alpha-validation.md`
+- 2026-11-28 | Task: Finalize alpha.4 release notes, installation guide and scope documentation | Agent: alpha4-release-docs | Status: completed; both-architecture download/checksum recipes and pinned documentation links PASS | Output: release-facing documentation
+- 2026-11-28 | Task: Review alpha.4 native release gates, packaging and exact-head CI evidence | Agent: alpha4-release-audit | Status: completed; packaging, installed replay, prior native CI and final release-doc diff PASS | Output: release gate review
+
 - 2026-11-25 | Task: Implement focused alpha.4 missing-file debugging in the synthetic Axum Docker example; preserve Roots and its database | Owner: Codex | Status: completed; 138 workspace tests, 14 Linux agent tests, native ARM64 installed-package capture and offline replay PASS; four ENOENT failures and five successful controls verified; native amd64 CI/publication remain pending | Output: `docs/alpha-validation.md`, Axum example, collector and replay
 - 2026-11-25 | Task: Add scoped file-open results and backwards-compatible event parsing for alpha.4 | Agent: alpha4-open-results | Status: completed; TID correlation, return values, errno, legacy unknown outcomes and focused tests PASS | Output: `subagents/alpha4-open-results.md`
 - 2026-11-25 | Task: Add the synthetic Axum missing-file route and installed-package acceptance assertions | Agent: alpha4-fixture | Status: completed; bounded concurrent requests, independent kernel assertions and successful controls PASS; explicit worker identity fixed after live validation | Output: `subagents/alpha4-fixture.md`

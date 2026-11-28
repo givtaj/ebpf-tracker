@@ -1,13 +1,14 @@
 # ebpf-tracker
 
-> **Axum-on-Docker alpha: `0.2.0-alpha.4` in development.** Trace one trusted Rust API
+> **Axum-on-Docker alpha: `0.2.0-alpha.4`.** Trace one trusted Rust API
 > service by installing an agent inside its existing Bookworm image.
 > See [release downloads](https://github.com/givtaj/ebpf-tracker/releases),
 > the [installation guide](./docs/in-container.md), and [alpha scope](./docs/alpha-scope.md).
 
-The published release is still **alpha.3**. This checkout adds a focused
-[missing-file debugging example](./examples/axum-container/README.md) for alpha.4:
-inspect a failed file open, its path, process and error in a saved capture.
+Alpha.4 adds a focused
+[missing-file debugging example](./examples/axum-container/README.md): inspect
+a failed file open, its path, process and error in a saved capture. Legacy
+captures without file-open results remain explicitly unknown.
 
 The in-container `ebpf-tracker-agent` starts your API, records selected syscall
 activity from its process tree, and writes replayable JSONL. Install the
@@ -15,7 +16,7 @@ Bookworm runtime package, set the agent as the entrypoint, and enable the
 tracing Compose override. Your API keeps its image's libraries, network,
 environment, ports, and database connections. The collector runs as root;
 the agent starts the API as its existing non-root user with capabilities dropped.
-The alpha.3 release requires native validation of both Bookworm **amd64** and
+The alpha.4 release requires native validation of both Bookworm **amd64** and
 **arm64** runtime packages. Select the package for the application's native
 Linux architecture; see [release verification](./docs/alpha-validation.md) for
 publication status and evidence.

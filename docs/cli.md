@@ -3,16 +3,17 @@
 `ebpf-tracker` is an experimental alpha for trusted Rust and Node.js development
 workflows. The most mature behavior is local command-session tracing and
 replay. It is not a production agent, security sandbox, or full profiler.
-The `0.2.0-alpha.4` development target is the [Axum-on-Docker workflow](./alpha-scope.md).
-Alpha.3 remains the published release; use the source-built runtime and replay
-CLI for alpha.4 file-open results and missing-file debugging.
+The `0.2.0-alpha.4` release targets the [Axum-on-Docker workflow](./alpha-scope.md).
+Use the matching runtime and replay CLI for file-open results and
+[missing-file debugging](../examples/axum-container/README.md). Older captures
+without outcomes remain unknown.
 Install `ebpf-tracker-agent` inside a Bookworm API image using the
 [in-container guide](./in-container.md). That native launcher is distinct from
 the host CLI documented here; it does not invoke Docker. The commands below
 describe the original managed-command tracing and replay workflows.
 Other commands remain experimental and outside the alpha feature-development scope.
 
-The alpha.3 runtime-package targets are native Linux amd64 and arm64.
+The alpha.4 runtime-package targets are native Linux amd64 and arm64.
 Prebuilt **host CLI** archives target Linux x86_64 and Intel macOS; the ARM64
 runtime `.deb` is not an ARM64 host CLI. Build the host CLI from source on
 other host architectures. See [alpha validation](./alpha-validation.md) for

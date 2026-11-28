@@ -1,7 +1,7 @@
 # Axum In-Container Alpha
 
-Development candidate: `0.2.0-alpha.4`; published release: `0.2.0-alpha.3`.
-The selected workflow installs a
+Release line: `0.2.0-alpha.4`. See [alpha validation](./alpha-validation.md)
+for publication status and exact-artifact evidence. The selected workflow installs a
 native tracing agent inside an existing Bookworm application image and starts
 the Axum API through that agent. Roots supplied the reference Docker layout;
 release gates use a separate synthetic fixture. A separately authorized local
@@ -37,7 +37,7 @@ to an already-running API or stop collection independently of the server.
   kinds, generic command tracing and older captures retain entry-only semantics.
 - Application stdout/stderr separate from a newly created JSONL output file.
 - Bookworm runtime packages for native amd64 and arm64 Linux Docker hosts.
-  The alpha.3 workflow requires separate native installed-package and live
+  The alpha.4 workflow requires separate native installed-package and live
   acceptance gates for both architectures before publication. Emulated live
   tracing is outside the validated boundary.
 
@@ -78,7 +78,7 @@ Current publication status and exact-artifact evidence are recorded in
 [alpha validation](./alpha-validation.md) and TASKLOG.md. The earlier
 [source-built ARM64 Roots pilot](./roots-pilot-2026-11-25.md) established health,
 scoped process activity, shutdown and replay for that local setup. It does not
-replace alpha.3's tagged-package gates or establish HTTP request attribution.
+replace alpha.4's tagged-package gates or establish HTTP request attribution.
 
 ## Evidence Limits
 
@@ -90,7 +90,8 @@ unknown. Other event kinds still record syscall entry. Write counts are
 requested bytes, not throughput. Connections contain a file descriptor, not a
 destination. There is no HTTP method, route, request ID, duration, SQL statement,
 or per-request causal relationship. Timestamps reflect parser receipt; long
-or whitespace-containing paths retain shared parser limits. Async workloads
+paths can be truncated by the collector and embedded newlines retain raw-format
+limits. Async workloads
 may use pooled connections or other syscalls outside these four probes.
 
 Do not market this alpha as complete network visibility, request tracing,

@@ -6,7 +6,7 @@ tagged source tree and attached binary archives are the public artifacts.
 
 ## Release Line
 
-The unpublished `0.2.0-alpha.4` candidate follows the
+The `0.2.0-alpha.4` release line follows the
 [Axum-on-Docker alpha contract](./docs/alpha-scope.md), using Roots as the
 reference service. The selected integration installs the native agent inside
 the API image. The isolated Axum/PostgreSQL acceptance must pass against the
@@ -124,7 +124,7 @@ git tag -a vX.Y.Z -m "ebpf-tracker vX.Y.Z"
 git push origin vX.Y.Z
 ```
 
-For this candidate use `v0.2.0-alpha.4` in place of `vX.Y.Z`.
+For this release use `v0.2.0-alpha.4` in place of `vX.Y.Z`.
 
 6. Wait for every `release` workflow job to pass: strict validation, both native runtime-package gates, both CLI platform builds, asset assembly, and publication.
 7. Download the public assets afresh, verify their checksums, and confirm the release notes describe the exact supported architectures.

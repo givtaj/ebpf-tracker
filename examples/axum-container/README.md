@@ -1,6 +1,6 @@
 # Debug a missing file in an Axum Docker API
 
-The alpha.4 development example deliberately returns HTTP 500 from
+The alpha.4 example deliberately returns HTTP 500 from
 `GET /missing-file` after trying to read `/data/fixture-missing-input.txt`.
 Its saved trace shows the API process, the file path, and the completed
 `open_at` result: `return_value: -2`, `errno: 2` (`ENOENT`). A successful read
@@ -32,9 +32,11 @@ bash scripts/in-container-smoke.sh \
 cargo run --locked -- replay target/axum-missing-file-alpha4/events.jsonl
 ```
 
-This builds the alpha.4 candidate from the checkout; it is not a published
-alpha.4 download. For native ARM64, change both the build platform and package
-suffix as described above. In replay, inspect the file-open failures for
+This builds alpha.4 from the checkout. To exercise the released bytes instead,
+follow the [alpha.4 download and checksum recipe](../../docs/in-container.md#obtain-the-package)
+and pass `--package vendor/ebpf-tracker-runtime.deb` to the smoke command.
+For native ARM64 source builds, change both the build platform and package
+suffix as described above. In replay, inspect **Failed File Opens** for
 `/data/fixture-missing-input.txt`; the error is observed by the collector,
 independently of the HTTP response. Older captures without outcome fields
 have an unknown result and must not be read as successful opens.
