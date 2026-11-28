@@ -12,6 +12,7 @@ This file tracks notable repo changes in progress on this branch.
 
 ### Documentation
 
+- Record alpha.4 exact-tag publication, all five public asset digests, both download recipes and fresh ARM64 missing-file capture/replay acceptance, including the local Debian HTTP timeout and fixture-only HTTPS retry.
 - Retain the alpha.4 implementation reviews and local ARM64 capture/replay acceptance notes, including the corrected worker-name assertion and viewer labels.
 - Update the release notes and architecture-specific download guide for alpha.4 while retaining the trusted development/CI and whole-session evidence limits.
 

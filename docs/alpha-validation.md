@@ -1,5 +1,85 @@
 # In-container alpha validation
 
+## Published alpha.4 — 2026-11-28
+
+**PASS:** [v0.2.0-alpha.4](https://github.com/givtaj/ebpf-tracker/releases/tag/v0.2.0-alpha.4)
+is published with native Bookworm amd64/ARM64 runtime packages, Linux x86_64
+and Intel macOS host CLI archives, and the original `SHA256SUMS`.
+
+- Source: `8aba95b4856141cb37bef812a3756a7d2e9f7e8e`, merged through
+  [PR #5](https://github.com/givtaj/ebpf-tracker/pull/5). Its tree matches the
+  reviewed release candidate `72a4b277f010995743af9e157a2c1faef19201ca`.
+- Annotated tag object: `323b8f96925d3cbc73100679cbcffb811fcd02e4`.
+- [Final PR CI](https://github.com/givtaj/ebpf-tracker/actions/runs/46144362985),
+  [merged-main CI](https://github.com/givtaj/ebpf-tracker/actions/runs/46144861278),
+  and [tag CI](https://github.com/givtaj/ebpf-tracker/actions/runs/46145207251):
+  all applicable jobs PASS on the first attempt.
+- [Exact-tag release workflow](https://github.com/givtaj/ebpf-tracker/actions/runs/46145207259):
+  all seven jobs PASS on the first attempt. Both native runtime gates used
+  Ubuntu 22.04.5 and Linux `6.8.0-1073-azure`, with matching host and Docker
+  architectures. Each verified four HTTP 500 responses, four completed
+  missing-file opens with return value `-2` / errno `2`, five successful
+  control opens, isolation, lifecycle, and actual-capture offline replay.
+- The assembled Linux archive passed installation outside the build checkout,
+  embedded demo/runtime/viewer checks, real Rust and Node captures, and offline
+  replay before publication.
+- Published at `2026-11-28T12:38:57Z`; release ID `461549764`.
+
+### Fresh public downloads and acceptance
+
+All five assets were downloaded afresh through anonymous HTTPS. Their digests
+matched GitHub's asset metadata, and the four binary digests matched the
+unmodified downloaded manifest. Both archives passed the tagged payload
+verifier; both Debian packages passed metadata, dependencies, exact payload,
+absence of install hooks, and ELF-architecture checks before execution.
+
+The tagged [Docker/CI guide](in-container.md) download/checksum recipe passed
+for both architectures, including the copy into `vendor/ebpf-tracker-runtime.deb`.
+Both used `sha256sum`; the `shasum` fallback and rejected malformed/missing/
+corrupt inputs passed focused recipe checks before publication.
+
+The first fresh local fixture build was **BLOCKED before agent installation**:
+the Debian mirror's HTTP endpoint timed out from both the host and Docker.
+HTTPS returned 200 from both. A retry used an exported copy of the tagged
+synthetic fixture with two local Dockerfile adjustments: copy the Rust builder's
+CA bundle into the Bookworm runtime layer, and change Debian mirror URLs from
+HTTP to HTTPS. TLS and Debian signature verification remained enabled. The
+public runtime package, published source, and repository Dockerfile were
+unchanged. The default fixture passed unchanged on both native tagged CI hosts;
+the fresh local result below includes this explicit mirror-transport adjustment.
+
+| Gate | Observed result |
+| --- | --- |
+| Fresh public ARM64 package | Installed into a clean Bookworm runtime layer without Cargo/rustc on native Docker ARM64, Linux `7.0.14-linuxkit`; existing build/dependency caches available |
+| HTTP and file outcomes | Four concurrent missing-file requests returned 500; four captured `/data/fixture-missing-input.txt` opens returned `-2` / errno `2`; five `/data/file-open-control.txt` opens succeeded with errno zero |
+| Capture | 47 JSONL records, 46 syscall records, 28 completed opens: 4 failed and 24 succeeded; unrelated container noise excluded |
+| Application identity | UID/GID 10001, all capabilities zero, NoNewPrivs enabled |
+| Shutdown and failures | Graceful exit 0; workload failure 23; missing command 127; invalid privileges/user/existing output 125; forced shutdown 137; SIGINT 0; collector failure 125; owned processes reaped |
+| Fresh public CLI | Intel macOS binary reports `0.2.0-alpha.4`; actual-capture and legacy replay PASS with its embedded viewer outside the checkout and Docker invocation blocked; all four viewer tests PASS |
+| Cleanup and preservation | Both attempts' fixture containers, networks and volumes absent; lifecycle containers absent; primary tracker HEAD, index, working diff and unrelated task-log edit unchanged |
+
+Roots source, services and databases were not accessed or changed. Only the
+isolated synthetic Axum/PostgreSQL fixture was exercised. Failed and successful
+receipts, the local mirror adjustment, raw synthetic captures and download
+evidence remain local under `output/alpha4-release-20261128/`.
+
+### Public alpha.4 asset digests
+
+| Asset | SHA-256 |
+| --- | --- |
+| `ebpf-tracker-runtime_0.2.0-alpha.4_amd64.deb` | `a946a98d49146c16ce3b5bd7ed6261e8129b0d19d87c41a9fe757be8c03ebdff` |
+| `ebpf-tracker-runtime_0.2.0-alpha.4_arm64.deb` | `cda11292aeec6d255644d87f2d5fe71caa52b792b6a87ceebf51fd0d5a43f47d` |
+| `ebpf-tracker-v0.2.0-alpha.4-x86_64-apple-darwin.tar.gz` | `d83b6d86513c1f6547a63042fa45b967f32947dcc234407775fdfe6c01814312` |
+| `ebpf-tracker-v0.2.0-alpha.4-x86_64-unknown-linux-gnu.tar.gz` | `2974bc5e224eb732fe476a1a3f56fa95a4fb13cf910af9ec6f2ce50eabc2113e` |
+| `SHA256SUMS` | `284e222db2817ca269dc47e394c5a4f983a137e14bbf31af2d5276d836b4149d` |
+
+These checks establish distribution consistency with the exact-tag workflow;
+no detached publisher-signature verification is claimed. Fresh local live
+acceptance covers ARM64, while amd64 live acceptance comes from native tagged
+CI. No ARM64 host CLI archive, production acceptance, independent developer
+acceptance or HTTP request-to-syscall attribution is claimed. This post-publication
+receipt closes the release gates left pending in the preparation record below.
+
 ## Alpha.4 release preparation — 2026-11-28
 
 The implementation at `d4f3af65b4fe55cd0ff3c707c86f78485dff2002`
